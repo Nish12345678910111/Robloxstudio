@@ -65,8 +65,8 @@ export default function Dashboard({ tokenReady }) {
       <button className="ghost" onClick={logout}>Log out</button></div></header>
     {!tokenReady && <p className="warn">⚠ <b>GITHUB_TOKEN not set.</b> Add it in Vercel → nishcloudphone → Settings → Environment Variables (a GitHub fine-grained PAT with <b>Actions: read/write</b> on Nish12345678910111/Robloxstudio), then redeploy. Until then the New Cloud Phone button is disabled.</p>}
     {msg && <p className="msg">{msg}</p>}
-    <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session (GitHub limit)</span></div></div>
-    {visible.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate GitHub workflow run, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
+    <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
+    {visible.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate cloud phone, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
       : <div className="grid">{phones.filter(p => !hidden.has(p.runId)).map(p => <PhoneCard key={p.runId} p={p} onStop={stop} onDelete={del} />)}</div>}
   </main>);
 }
