@@ -69,3 +69,14 @@ sudo apt install qemu-system-x86 qemu-utils novnc websockify socat cloudflared c
   can control the phone screen.
 * VNC passwords are limited to **8 characters** by the VNC protocol itself,
   which is why the generated password is 8 characters long.
+
+---
+
+## ☁️ NishCloudPhone dashboard (Vercel)
+
+Website project: **nishcloudphone** on Vercel, connected to this GitHub repo.
+
+- Login-protected dashboard (password in Vercel env `DASHBOARD_PASSWORD`, httpOnly HMAC session cookie, security headers, timing-safe compare).
+- **+ New Cloud Phone** button dispatches the `Cloud Phone` workflow per click — create as many phones as GitHub lets you run concurrently; each card shows `Url - ...` / `Password - ...` and embeds the live noVNC screen inside a phone-sized box when initialized. Stop button cancels that run.
+- URL/password are fetched **server-side only** from the run's private `cloud-phone-info` Actions artifact. The GitHub token is **only** a Vercel server env var (`GITHUB_TOKEN`, fine-grained PAT with Actions read/write on this repo) — never in browser code, never in the repo.
+- **Max specs per phone:** 4 vCPU · 12 GB RAM · 32 GB storage · 340 min keep-alive (GitHub hard-kills jobs at ~360 min, so "forever" isn't possible on Actions — when a phone dies, create a new one).

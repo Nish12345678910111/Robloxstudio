@@ -1,107 +1,126 @@
 name: Cloud Phone
 
-# =============================================================================
-#  CLOUD PHONE - a NEW, separate workflow.
+# CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
+# Android in QEMU -> noVNC -> random Cloudflare Quick Tunnel URL + VNC password.
+# The tunnel URL/password are uploaded as a PRIVATE Actions artifact
+# (cloud-phone-info.json) so the NishCloudPhone dashboard can fetch them
+# server-side with a token. They are never committed to this public repo.
 #
-#  This does NOT overwrite or replace anything:
-#    * "RDP"                    (.github/workflows/main.yml)                    -> untouched
-#    * "Mobile Phone (QEMU...)" (.github/workflows/mobile-phone-qemu-novnc.yml) -> untouched
-#
-#  What it does:
-#    Boots an Android phone in QEMU on the runner, shows the screen in your
-#    browser with noVNC, and publishes it on a randomly generated public
-#    Cloudflare URL (https://<random>.trycloudflare.com) protected by a VNC
-#    password. Open the URL from the run log / Summary, click Connect, type
-#    the password - mouse = touch. No account, token, or secret is needed.
-# =============================================================================
+# GitHub hard limit: a job can run at most 360 minutes (~6h). Nothing can
+# run "forever" on GitHub Actions - when a run ends, just start a new phone.
+
+run-name: "Cloud Phone ${{ inputs.phone_id }}"
 
 on:
   workflow_dispatch:
     inputs:
-      vnc_password:
-        description: "VNC password (leave empty = random 8-char password generated & shown in the logs)"
+      phone_id:
+        description: "Phone ID (set automatically by the dashboard)"
         required: false
-        default: ""
+        default: "manual"
         type: string
       session_minutes:
-        description: "How long to keep the Cloud Phone online (GitHub job max is ~360 min)"
+        description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
-        default: "300"
+        default: "340"
         type: choice
-        options: ["30", "60", "120", "240", "300", "340"]
+        options: ["30", "60", "120", "240", "300", "340", "355"]
       ram_mb:
-        description: "Phone RAM (MB)"
+        description: "Phone RAM (MB) - runner has 16 GB total"
         required: true
-        default: "4096"
+        default: "12288"
         type: choice
-        options: ["2048", "4096", "6144", "8192"]
+        options: ["4096", "8192", "12288"]
       cpu_cores:
-        description: "Phone CPU cores"
+        description: "Phone CPU cores - runner has 4 vCPUs"
         required: true
-        default: "2"
+        default: "4"
         type: choice
-        options: ["1", "2", "4"]
+        options: ["2", "4"]
       disk_gb:
         description: "Phone storage (GB)"
         required: true
-        default: "16"
+        default: "32"
         type: choice
-        options: ["8", "16", "32"]
+        options: ["16", "32"]
 
 permissions:
   contents: read
 
-concurrency:
-  group: cloud-phone
-  cancel-in-progress: false
+# NOTE: no concurrency group on purpose - every dispatch gets its own
+# runner, so you can create MULTIPLE cloud phones at the same time.
 
 jobs:
   cloud-phone:
     name: Cloud Phone
     runs-on: ubuntu-latest
-    # GitHub-hosted jobs hard-cap at 360 minutes.
     timeout-minutes: 360
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install QEMU, noVNC and tools
+      - name: Install QEMU, noVNC and tools (max performance setup)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils \
             novnc websockify \
             socat curl ca-certificates
-          echo "--- KVM check (optional, script falls back to emulation) ---"
-          ls -l /dev/kvm || echo "no /dev/kvm on this runner - TCG emulation will be used"
+          # /dev/kvm exists but is root:kvm 0660 - make it writable so QEMU
+          # gets real hardware acceleration instead of slow TCG emulation.
+          sudo chmod 666 /dev/kvm || true
+          if [ -w /dev/kvm ]; then echo "KVM: READY (hardware acceleration)"; else echo "KVM: not writable, TCG fallback"; fi
+          nproc; free -h
 
       - name: Install cloudflared (Cloudflare Tunnel)
         run: |
-          curl -fL --retry 3 \
-            -o /tmp/cloudflared \
+          curl -fL --retry 3 -o /tmp/cloudflared \
             https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
           chmod +x /tmp/cloudflared
           sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
           cloudflared --version
 
-      - name: Cache Android ISO (so re-runs don't re-download ~900 MB)
+      - name: Cache Android ISO
         uses: actions/cache@v4
         with:
           path: .phone-vm/android-x86.iso
           key: cloud-phone-android-x86-iso-v1
 
-      - name: Start Cloud Phone (QEMU + noVNC + Cloudflare URL)
+      - name: Start Cloud Phone (QEMU + noVNC + Cloudflare tunnel)
         env:
-          VNC_PASSWORD: ${{ inputs.vnc_password }}
+          PHONE_ID: ${{ inputs.phone_id }}
+          START_ONLY: "1"
+          PHONE_INFO_FILE: ${{ github.workspace }}/cloud-phone-info.json
           RAM_MB: ${{ inputs.ram_mb }}
           CPU_CORES: ${{ inputs.cpu_cores }}
           DISK_GB: ${{ inputs.disk_gb }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
         run: |
           chmod +x scripts/mobile-phone/start.sh
-          # This step stays running for the whole session - the phone is
-          # alive while it runs. The Cloudflare URL + password are printed
-          # in this step's log and in the run Summary. Cancel the run to
-          # switch the Cloud Phone off.
           ./scripts/mobile-phone/start.sh
+          echo "--- phone info (password redacted in log) ---"
+          sed 's/"password":"[^"]*"/"password":"********"/' cloud-phone-info.json
+
+      - name: Publish phone info for the dashboard (private artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-phone-info-${{ inputs.phone_id }}-${{ github.run_id }}
+          path: cloud-phone-info.json
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Keep phone alive (until session ends or run is cancelled)
+        env:
+          SESSION_MINUTES: ${{ inputs.session_minutes }}
+        run: |
+          echo "Phone is LIVE. Keeping it alive for ${SESSION_MINUTES} minutes (GitHub max ~360)."
+          echo "Stop it any time from the NishCloudPhone dashboard or by cancelling this run."
+          DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            if [ -f .phone-vm/qemu.pid ] && ! kill -0 "$(cat .phone-vm/qemu.pid)" 2>/dev/null; then
+              echo "::error::QEMU died early"; tail -n 50 .phone-vm/websockify.log .phone-vm/cloudflared.log || true; exit 1
+            fi
+            sleep 60
+          done
+          echo "Session over."
