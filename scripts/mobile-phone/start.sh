@@ -164,8 +164,12 @@ if command -v adb >/dev/null 2>&1; then
       $S pm clear "$pkg" >/dev/null 2>&1 || true
     done
     # Straight mobile: portrait 720x1280, no auto-rotate flipping, stay awake.
+    # Phone, NOT tablet: 720x1280 @ density 320 = 360dp wide (<600dp), so
+    # Android uses its phone UI/launcher instead of the tablet layout.
     $S wm size 720x1280 >/dev/null 2>&1 || true
     $S wm density 320 >/dev/null 2>&1 || true
+    $S setprop ro.build.characteristics phone >/dev/null 2>&1 || true
+    $S setprop ro.build.type user >/dev/null 2>&1 || true
     $S settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
     $S settings put system user_rotation 0 >/dev/null 2>&1 || true
     $S svc power stayon true >/dev/null 2>&1 || true
