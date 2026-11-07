@@ -60,7 +60,7 @@ export default function Dashboard({ tokenReady }) {
   async function logout() { await fetch("/api/logout", { method: "POST" }); location.reload(); }
   const visible = phones.filter(p => !hidden.has(p.runId)); const liveCount = visible.filter(p => p.status === "in_progress").length;
   return (<main className="wrap">
-    <header className="top"><div><h1>☁️ NishCloudPhone</h1><p className="muted">Android phones in QEMU · GitHub Actions runners · Cloudflare tunnels · noVNC</p></div>
+    <header className="top"><div><h1>☁️ NishCloudPhone</h1><p className="muted">Android phones in QEMU · noVNC</p></div>
       <div className="topBtns"><button className="primary" onClick={create} disabled={creating || !tokenReady}>{creating ? "Launching…" : "＋ New Cloud Phone"}</button>
       <button className="ghost" onClick={logout}>Log out</button></div></header>
     {!tokenReady && <p className="warn">⚠ <b>GITHUB_TOKEN not set.</b> Add it in Vercel → nishcloudphone → Settings → Environment Variables (a GitHub fine-grained PAT with <b>Actions: read/write</b> on Nish12345678910111/Robloxstudio), then redeploy. Until then the New Cloud Phone button is disabled.</p>}
