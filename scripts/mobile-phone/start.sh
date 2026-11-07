@@ -136,6 +136,49 @@ sleep 8
 printf 'sendkey ret\n' \
   | socat - "UNIX-CONNECT:${WORKDIR_PHONE}/qemu-monitor.sock" >/dev/null 2>&1 || true
 
+# ------------------------------------------- skip Android first-time setup ---
+# Android-x86 first boot opens the Setup Wizard (Google Sign-in). Nobody wants
+# that on a cloud phone, so in the background we wait for ADB, mark the device
+# as provisioned/setup-complete, disable the wizard packages, force portrait
+# phone resolution, and land straight on the HOME launcher screen.
+# Runs detached so it never delays the noVNC / Cloudflare tunnel startup.
+if command -v adb >/dev/null 2>&1; then
+  echo ">>> Setup-skipper armed (will auto-skip the Android setup wizard via ADB)"
+  (
+    adb kill-server >/dev/null 2>&1 || true
+    # Wait up to ~8 min for Android to boot and ADB to come up on :5555.
+    for _ in $(seq 1 96); do
+      adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
+      BOOTED="$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+      [ "$BOOTED" = "1" ] && break
+      sleep 5
+    done
+    S="adb -s 127.0.0.1:5555 shell"
+    # Mark setup as already done (this is what dismisses the wizard).
+    $S settings put global device_provisioned 1 >/dev/null 2>&1 || true
+    $S settings put secure user_setup_complete 1 >/dev/null 2>&1 || true
+    $S settings put global setup_wizard_has_run 1 >/dev/null 2>&1 || true
+    # Disable every setup-wizard flavour Android-x86 9 may ship.
+    for pkg in com.google.android.setupwizard com.android.setupwizard com.android.provision; do
+      $S pm disable-user --user 0 "$pkg" >/dev/null 2>&1 || true
+      $S pm clear "$pkg" >/dev/null 2>&1 || true
+    done
+    # Straight mobile: portrait 720x1280, no auto-rotate flipping, stay awake.
+    $S wm size 720x1280 >/dev/null 2>&1 || true
+    $S wm density 320 >/dev/null 2>&1 || true
+    $S settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+    $S settings put system user_rotation 0 >/dev/null 2>&1 || true
+    $S svc power stayon true >/dev/null 2>&1 || true
+    # Land on the launcher home screen.
+    $S input keyevent 3 >/dev/null 2>&1 || true
+    $S am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
+    echo "setup-skipper: done $(date -u +%FT%TZ)"
+  ) > setup-skip.log 2>&1 &
+  echo $! > setup-skip.pid
+else
+  echo "::warning::adb not installed - setup wizard will need one manual 'Skip' tap"
+fi
+
 # ----------------------------------------------------------------- noVNC -----
 echo ">>> Starting noVNC on http://127.0.0.1:${NOVNC_PORT}/vnc.html ..."
 # Ubuntu's novnc package installs the web client in /usr/share/novnc.
