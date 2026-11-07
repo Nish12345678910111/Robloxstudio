@@ -52,7 +52,9 @@ cd "$WORKDIR_PHONE"
 # VNC only uses the first 8 characters - enforce that so what we print is
 # exactly what works.
 if [ -z "${VNC_PASSWORD:-}" ]; then
-  VNC_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 8)"
+  # openssl rand -hex 4 = exactly 8 chars, no pipe (a `tr | head -c 8` pipeline
+  # dies with "tr: write error: Broken pipe" under `set -o pipefail`).
+  VNC_PASSWORD="$(openssl rand -hex 4)"
 fi
 if [ "${#VNC_PASSWORD}" -gt 8 ]; then
   echo "::warning::VNC passwords are truncated to 8 characters by the VNC protocol."
