@@ -42,6 +42,5 @@ export default function Dashboard({ tokenReady }) {
     <div className="stats"><div><b>{phones.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session (GitHub limit)</span></div></div>
     {phones.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate GitHub workflow run, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
       : <div className="grid">{phones.map(p => <PhoneCard key={p.runId} p={p} onStop={stop} />)}</div>}
-    <p className="muted foot">GitHub kills every job at ~360 min — no workflow can run truly forever. When a phone dies, just create a new one. Passwords/URLs are fetched server-side from private Actions artifacts and are never stored in the repo.</p>
   </main>);
 }
