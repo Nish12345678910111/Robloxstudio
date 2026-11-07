@@ -1,0 +1,107 @@
+name: Cloud Phone
+
+# =============================================================================
+#  CLOUD PHONE - a NEW, separate workflow.
+#
+#  This does NOT overwrite or replace anything:
+#    * "RDP"                    (.github/workflows/main.yml)                    -> untouched
+#    * "Mobile Phone (QEMU...)" (.github/workflows/mobile-phone-qemu-novnc.yml) -> untouched
+#
+#  What it does:
+#    Boots an Android phone in QEMU on the runner, shows the screen in your
+#    browser with noVNC, and publishes it on a randomly generated public
+#    Cloudflare URL (https://<random>.trycloudflare.com) protected by a VNC
+#    password. Open the URL from the run log / Summary, click Connect, type
+#    the password - mouse = touch. No account, token, or secret is needed.
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      vnc_password:
+        description: "VNC password (leave empty = random 8-char password generated & shown in the logs)"
+        required: false
+        default: ""
+        type: string
+      session_minutes:
+        description: "How long to keep the Cloud Phone online (GitHub job max is ~360 min)"
+        required: true
+        default: "300"
+        type: choice
+        options: ["30", "60", "120", "240", "300", "340"]
+      ram_mb:
+        description: "Phone RAM (MB)"
+        required: true
+        default: "4096"
+        type: choice
+        options: ["2048", "4096", "6144", "8192"]
+      cpu_cores:
+        description: "Phone CPU cores"
+        required: true
+        default: "2"
+        type: choice
+        options: ["1", "2", "4"]
+      disk_gb:
+        description: "Phone storage (GB)"
+        required: true
+        default: "16"
+        type: choice
+        options: ["8", "16", "32"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-phone
+  cancel-in-progress: false
+
+jobs:
+  cloud-phone:
+    name: Cloud Phone
+    runs-on: ubuntu-latest
+    # GitHub-hosted jobs hard-cap at 360 minutes.
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install QEMU, noVNC and tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils \
+            novnc websockify \
+            socat curl ca-certificates
+          echo "--- KVM check (optional, script falls back to emulation) ---"
+          ls -l /dev/kvm || echo "no /dev/kvm on this runner - TCG emulation will be used"
+
+      - name: Install cloudflared (Cloudflare Tunnel)
+        run: |
+          curl -fL --retry 3 \
+            -o /tmp/cloudflared \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x /tmp/cloudflared
+          sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
+          cloudflared --version
+
+      - name: Cache Android ISO (so re-runs don't re-download ~900 MB)
+        uses: actions/cache@v4
+        with:
+          path: .phone-vm/android-x86.iso
+          key: cloud-phone-android-x86-iso-v1
+
+      - name: Start Cloud Phone (QEMU + noVNC + Cloudflare URL)
+        env:
+          VNC_PASSWORD: ${{ inputs.vnc_password }}
+          RAM_MB: ${{ inputs.ram_mb }}
+          CPU_CORES: ${{ inputs.cpu_cores }}
+          DISK_GB: ${{ inputs.disk_gb }}
+          SESSION_MINUTES: ${{ inputs.session_minutes }}
+        run: |
+          chmod +x scripts/mobile-phone/start.sh
+          # This step stays running for the whole session - the phone is
+          # alive while it runs. The Cloudflare URL + password are printed
+          # in this step's log and in the run Summary. Cancel the run to
+          # switch the Cloud Phone off.
+          ./scripts/mobile-phone/start.sh
