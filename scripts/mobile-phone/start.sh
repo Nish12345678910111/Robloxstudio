@@ -72,6 +72,65 @@ if [ ! -s "$ISO_FILE" ]; then
 fi
 ls -lh "$ISO_FILE"
 
+# ------------------------------------------------- patch ISO: no setup wizard -
+# Android-x86 has ADB-over-TCP OFF and runs the Setup Wizard on first boot, so
+# post-boot tricks alone cannot skip it. Instead we patch the boot ramdisk's
+# prop.default BEFORE first boot:
+#   ro.setupwizard.mode=DISABLED  -> wizard exits instantly, straight to HOME
+#   ro.build.characteristics=phone -> phone UI, never tablet UI
+#   ro.debuggable / persist.adb.tcp.port -> ADB backup skipper can connect
+# and force a portrait phone video mode in the boot config. The result is
+# cached as android-phone.iso, so this one-time patch survives re-runs.
+PATCHED_ISO="$WORKDIR_PHONE/android-phone.iso"
+if [ ! -s "$PATCHED_ISO" ]; then
+  if command -v xorriso >/dev/null 2>&1; then
+    echo ">>> Patching ISO (disable setup wizard, phone mode, portrait)..."
+    TMP_PATCH="$(mktemp -d)"
+    cp "$ISO_FILE" "$PATCHED_ISO"
+    if xorriso -osirrox on -indev "$ISO_FILE" -extract /ramdisk.img "$TMP_PATCH/ramdisk.img" >/dev/null 2>&1 && [ -s "$TMP_PATCH/ramdisk.img" ]; then
+      mkdir -p "$TMP_PATCH/ramdisk"
+      ( cd "$TMP_PATCH/ramdisk" && (gzip -dc ../ramdisk.img 2>/dev/null || cat ../ramdisk.img) | cpio -idm --quiet 2>/dev/null ) || true
+      PROP_FILE=""
+      for f in prop.default default.prop; do [ -f "$TMP_PATCH/ramdisk/$f" ] && PROP_FILE="$TMP_PATCH/ramdisk/$f" && break; done
+      [ -n "$PROP_FILE" ] || PROP_FILE="$TMP_PATCH/ramdisk/prop.default"
+      grep -vE '^(ro\.setupwizard\.mode|ro\.build\.characteristics|ro\.debuggable|ro\.adb\.secure|ro\.secure|persist\.adb\.tcp\.port|service\.adb\.tcp\.port|persist\.sys\.usb\.config|sys\.usb\.config)=' "$PROP_FILE" 2>/dev/null > "$PROP_FILE.tmp" || true
+      mv "$PROP_FILE.tmp" "$PROP_FILE" 2>/dev/null || true
+      cat >> "$PROP_FILE" <<'PROPS'
+ro.setupwizard.mode=DISABLED
+ro.build.characteristics=phone
+ro.debuggable=1
+ro.adb.secure=0
+ro.secure=0
+persist.adb.tcp.port=5555
+service.adb.tcp.port=5555
+persist.sys.usb.config=adb
+sys.usb.config=adb
+PROPS
+      ( cd "$TMP_PATCH/ramdisk" && find . | cpio -o -H newc --quiet 2>/dev/null | gzip -9 ) > "$TMP_PATCH/ramdisk-new.img"
+      if [ -s "$TMP_PATCH/ramdisk-new.img" ]; then
+        xorriso -dev "$PATCHED_ISO" -boot_image any keep -update "$TMP_PATCH/ramdisk-new.img" /ramdisk.img >/dev/null 2>&1           && echo ">>> ramdisk patched (setup wizard DISABLED)"           || echo "::warning::xorriso ramdisk update failed - using unpatched ramdisk"
+      fi
+      # Force portrait phone resolution in any boot config we can find.
+      for cfg in /isolinux/isolinux.cfg /efi/boot/grub.cfg /boot/grub/grub.cfg; do
+        if xorriso -osirrox on -indev "$ISO_FILE" -extract "$cfg" "$TMP_PATCH/cfg" >/dev/null 2>&1 && [ -s "$TMP_PATCH/cfg" ]; then
+          sed -i 's|initrd=/initrd.img|initrd=/initrd.img video=720x1280|g; s|kernel /kernel|kernel /kernel video=720x1280|g' "$TMP_PATCH/cfg"
+          xorriso -dev "$PATCHED_ISO" -boot_image any keep -update "$TMP_PATCH/cfg" "$cfg" >/dev/null 2>&1 || true
+          rm -f "$TMP_PATCH/cfg"
+        fi
+      done
+    else
+      echo "::warning::ramdisk.img not found in ISO - cannot pre-disable setup wizard"
+    fi
+    rm -rf "$TMP_PATCH"
+    ls -lh "$PATCHED_ISO" || true
+  else
+    echo "::warning::xorriso not installed - booting unpatched ISO (setup wizard may show)"
+  fi
+fi
+BOOT_ISO="$ISO_FILE"
+if [ -s "$PATCHED_ISO" ]; then BOOT_ISO="$PATCHED_ISO"; fi
+echo ">>> Booting ISO: $BOOT_ISO"
+
 # ------------------------------------------------------------------ disk -----
 DISK_FILE="$WORKDIR_PHONE/phone-disk.qcow2"
 if [ ! -f "$DISK_FILE" ]; then
@@ -103,7 +162,7 @@ qemu-system-x86_64 \
   -m "$RAM_MB" \
   -smp "$CPU_CORES" \
   -drive "file=${DISK_FILE},format=qcow2,if=virtio,cache=writeback" \
-  -cdrom "$ISO_FILE" \
+  -cdrom "$BOOT_ISO" \
   -boot "order=d,menu=off" \
   -device "VGA,vgamem_mb=64,xres=720,yres=1280" \
   -device "nec-usb-xhci,id=usb" \
