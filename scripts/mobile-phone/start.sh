@@ -77,14 +77,17 @@ if [ ! -f "$DISK_FILE" ]; then
 fi
 
 # ------------------------------------------------------------- acceleration --
+# NOTE: 'thread=multi' is an ACCELERATOR option, not a machine property.
+# (Passing it via -machine ...accel=tcg,thread=multi crashes QEMU >= 9 with
+#  "Property 'pc-q35-*.thread' not found" - that was the 39s failure.)
 if [ -w /dev/kvm ]; then
-  ACCEL="kvm"
+  ACCEL_ARGS=(-accel kvm)
   CPU_MODEL="host"
   echo ">>> KVM available - hardware acceleration ON"
 else
-  ACCEL="tcg,thread=multi"
-  CPU_MODEL="qemu64"
-  echo "::warning::/dev/kvm not available - falling back to TCG emulation (slower boot)"
+  ACCEL_ARGS=(-accel tcg,thread=multi)
+  CPU_MODEL="max"
+  echo "::warning::/dev/kvm not writable - falling back to TCG emulation (slower boot)"
 fi
 
 # ------------------------------------------------------------------ QEMU -----
@@ -92,7 +95,8 @@ echo ">>> Starting QEMU (Android phone, 720x1280 portrait)..."
 rm -f qemu-monitor.sock qemu.pid
 qemu-system-x86_64 \
   -name "android-phone" \
-  -machine "type=q35,accel=${ACCEL}" \
+  -machine "type=q35" \
+  "${ACCEL_ARGS[@]}" \
   -cpu "$CPU_MODEL" \
   -m "$RAM_MB" \
   -smp "$CPU_CORES" \
@@ -167,6 +171,17 @@ if [ -z "$TUNNEL_URL" ]; then
   exit 1
 fi
 
+# ------------------------------------------------------- report phone info ---
+# Used by the NishCloudPhone dashboard: it downloads this file as a GitHub
+# Actions artifact (auth-only, never committed to this PUBLIC repo) to learn
+# the tunnel URL + password for this phone.
+PHONE_INFO_FILE="${PHONE_INFO_FILE:-$WORKDIR_PHONE/cloud-phone-info.json}"
+mkdir -p "$(dirname "$PHONE_INFO_FILE")"
+cat > "$PHONE_INFO_FILE" <<EOF
+{"phoneId":"${PHONE_ID:-manual}","tunnelUrl":"${TUNNEL_URL}","novncUrl":"${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale","password":"${VNC_PASSWORD}","startedAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF
+echo ">>> Phone info written to $PHONE_INFO_FILE"
+
 # ----------------------------------------------------------------- banner ----
 banner() {
   cat <<EOF
@@ -213,6 +228,14 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 
 # --------------------------------------------------------------- keep alive --
+# Dashboard mode: the workflow uploads $PHONE_INFO_FILE as an artifact in the
+# next step, then runs its own keep-alive step. Our background daemons
+# (QEMU -daemonize, websockify, cloudflared) survive across steps.
+if [ "${START_ONLY:-0}" = "1" ]; then
+  echo ">>> START_ONLY=1 - leaving phone running in background, exiting starter."
+  exit 0
+fi
+
 cleanup() {
   echo ">>> Shutting down phone / tunnel..."
   kill "$(cat cloudflared.pid 2>/dev/null)" "$(cat websockify.pid 2>/dev/null)" 2>/dev/null || true

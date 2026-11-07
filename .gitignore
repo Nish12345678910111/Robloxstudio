@@ -1,0 +1,5 @@
+node_modules/
+.next/
+.env*.local
+.phone-vm/
+cloud-phone-info.json
