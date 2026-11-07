@@ -72,7 +72,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils \
             novnc websockify \
-            socat curl ca-certificates adb xorriso cpio cpu-checker
+            socat curl ca-certificates adb xorriso cpio aria2 cpu-checker
           echo "--- KVM check (acceleration is optional, TCG fallback exists) ---"
           ls -l /dev/kvm || echo "no /dev/kvm on this runner - TCG emulation will be used"
           kvm-ok || true
