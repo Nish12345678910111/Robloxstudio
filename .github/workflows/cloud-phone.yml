@@ -66,7 +66,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils \
             novnc websockify \
-            socat curl ca-certificates adb xorriso cpio
+            socat curl ca-certificates adb xorriso cpio aria2
           # /dev/kvm exists but is root:kvm 0660 - make it writable so QEMU
           # gets real hardware acceleration instead of slow TCG emulation.
           sudo chmod 666 /dev/kvm || true
@@ -103,6 +103,17 @@ jobs:
           ./scripts/mobile-phone/start.sh
           echo "--- phone info (password redacted in log) ---"
           sed 's/"password":"[^"]*"/"password":"********"/' cloud-phone-info.json
+
+      - name: Save Android ISO to cache NOW (not at job end)
+        # actions/cache normally saves in post-job, which never happens when
+        # a 340-min session is cancelled - that is why every run re-downloaded
+        # 921 MB. Saving explicitly here makes the NEXT phone start fast.
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .phone-vm/android-x86.iso
+            .phone-vm/android-phone.iso
+          key: cloud-phone-android-x86-iso-v2
 
       - name: Publish phone info for the dashboard (private artifact)
         uses: actions/upload-artifact@v4

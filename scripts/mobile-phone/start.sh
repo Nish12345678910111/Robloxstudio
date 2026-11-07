@@ -67,8 +67,17 @@ ISO_FILE="$WORKDIR_PHONE/android-x86.iso"
 if [ ! -s "$ISO_FILE" ]; then
   echo ">>> Downloading Android-x86 ISO..."
   echo "    $ANDROID_ISO_URL"
-  # -C - resumes a partial download (workflow caches this file between runs)
-  curl -fL -C - --retry 5 --retry-delay 5 -o "$ISO_FILE" "$ANDROID_ISO_URL"
+  # SourceForge throttles a single connection to ~0.7 MB/s (= 22 min for
+  # 921 MB!). aria2 opens 16 parallel ranged connections - usually <1 min.
+  # The workflow also saves this file to the Actions cache right after the
+  # phone starts, so later phones skip the download entirely.
+  if command -v aria2c >/dev/null 2>&1; then
+    aria2c -x 16 -s 16 -k 1M --file-allocation=none --max-tries=5 --retry-wait=5 \
+      -d "$WORKDIR_PHONE" -o "$(basename "$ISO_FILE")" "$ANDROID_ISO_URL" \
+      || curl -fL -C - --retry 5 --retry-delay 5 -o "$ISO_FILE" "$ANDROID_ISO_URL"
+  else
+    curl -fL -C - --retry 5 --retry-delay 5 -o "$ISO_FILE" "$ANDROID_ISO_URL"
+  fi
 fi
 ls -lh "$ISO_FILE"
 
