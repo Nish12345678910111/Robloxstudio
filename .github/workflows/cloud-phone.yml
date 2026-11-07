@@ -85,8 +85,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-          .phone-vm/android-x86.iso
-          .phone-vm/android-phone.iso
+            .phone-vm/android-x86.iso
+            .phone-vm/android-phone.iso
           key: cloud-phone-android-x86-iso-v2
 
       - name: Start Cloud Phone (QEMU + noVNC + Cloudflare tunnel)
