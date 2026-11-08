@@ -92,9 +92,9 @@ jobs:
         with:
           path: |
             .phone-vm/android-x86.iso
-            .phone-vm/android-x86-phone.iso
+            .phone-vm/android-x86-phone2.iso
             .phone-vm/bliss11.iso
-            .phone-vm/bliss11-phone.iso
+            .phone-vm/bliss11-phone2.iso
           key: cloud-phone-android-x86-iso-v2
 
       - name: Cache Bliss OS Android 11 ISO
@@ -102,7 +102,7 @@ jobs:
         with:
           path: |
             .phone-vm/bliss11.iso
-            .phone-vm/bliss11-phone.iso
+            .phone-vm/bliss11-phone2.iso
           key: cloud-phone-bliss11-iso-v1
 
       - name: Start Cloud Phone (QEMU + noVNC + Cloudflare tunnel)
@@ -130,9 +130,9 @@ jobs:
         with:
           path: |
             .phone-vm/android-x86.iso
-            .phone-vm/android-x86-phone.iso
+            .phone-vm/android-x86-phone2.iso
             .phone-vm/bliss11.iso
-            .phone-vm/bliss11-phone.iso
+            .phone-vm/bliss11-phone2.iso
           key: cloud-phone-android-x86-iso-v2
 
       - name: Publish phone info for the dashboard (private artifact)
