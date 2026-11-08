@@ -103,20 +103,33 @@ ls -lh "$ISO_FILE"
 #   ro.debuggable / persist.adb.tcp.port -> ADB backup skipper can connect
 # and force a portrait phone video mode in the boot config. The result is
 # cached as android-phone.iso, so this one-time patch survives re-runs.
-PATCHED_ISO="$WORKDIR_PHONE/${ISO_BASENAME%.iso}-phone.iso"
+PATCHED_ISO="$WORKDIR_PHONE/${ISO_BASENAME%.iso}-phone2.iso"
 if [ ! -s "$PATCHED_ISO" ]; then
   if command -v xorriso >/dev/null 2>&1; then
     echo ">>> Patching ISO (disable setup wizard, phone mode, portrait)..."
     TMP_PATCH="$(mktemp -d)"
     cp "$ISO_FILE" "$PATCHED_ISO"
-    if xorriso -osirrox on -indev "$ISO_FILE" -extract /ramdisk.img "$TMP_PATCH/ramdisk.img" >/dev/null 2>&1 && [ -s "$TMP_PATCH/ramdisk.img" ]; then
-      mkdir -p "$TMP_PATCH/ramdisk"
-      ( cd "$TMP_PATCH/ramdisk" && (gzip -dc ../ramdisk.img 2>/dev/null || cat ../ramdisk.img) | cpio -idm --quiet 2>/dev/null ) || true
+    # Bliss OS doesn't keep ramdisk.img at the ISO root like Android-x86, so
+    # extract the whole ISO and FIND it (ramdisk.img first, initrd.img next).
+    mkdir -p "$TMP_PATCH/isofs"
+    xorriso -osirrox on -indev "$ISO_FILE" -extract / "$TMP_PATCH/isofs" >/dev/null 2>&1 || true
+    PATCHED_ANY=0
+    for IMG in $(find "$TMP_PATCH/isofs" -type f -name 'ramdisk.img' | sort; find "$TMP_PATCH/isofs" -type f -name 'initrd.img' | sort); do
+      REL="/${IMG#$TMP_PATCH/isofs/}"
+      echo ">>> Found boot image: $REL"
+      rm -rf "$TMP_PATCH/unpack"; mkdir -p "$TMP_PATCH/unpack"
+      ( cd "$TMP_PATCH/unpack" && { gzip -dc "$IMG" 2>/dev/null || xz -dc "$IMG" 2>/dev/null || cat "$IMG"; } | cpio -idm --quiet 2>/dev/null ) || true
       PROP_FILE=""
-      for f in prop.default default.prop; do [ -f "$TMP_PATCH/ramdisk/$f" ] && PROP_FILE="$TMP_PATCH/ramdisk/$f" && break; done
-      [ -n "$PROP_FILE" ] || PROP_FILE="$TMP_PATCH/ramdisk/prop.default"
-      grep -vE '^(ro\.setupwizard\.mode|ro\.build\.characteristics|ro\.debuggable|ro\.adb\.secure|ro\.secure|persist\.adb\.tcp\.port|service\.adb\.tcp\.port|persist\.sys\.usb\.config|sys\.usb\.config)=' "$PROP_FILE" 2>/dev/null > "$PROP_FILE.tmp" || true
-      mv "$PROP_FILE.tmp" "$PROP_FILE" 2>/dev/null || true
+      for f in prop.default default.prop; do
+        if [ -f "$TMP_PATCH/unpack/$f" ]; then PROP_FILE="$TMP_PATCH/unpack/$f"; break; fi
+      done
+      # Only the Android ramdisk carries prop files; skip pure-init images.
+      if [ -z "$PROP_FILE" ] && [ "$(basename "$IMG")" = "ramdisk.img" ]; then
+        PROP_FILE="$TMP_PATCH/unpack/prop.default"; : > "$PROP_FILE"
+      fi
+      [ -n "$PROP_FILE" ] || { echo "    (no prop file in $REL - skipping)"; continue; }
+      grep -vE '^(ro\.setupwizard\.mode|ro\.build\.characteristics|ro\.debuggable|ro\.adb\.secure|ro\.secure|persist\.adb\.tcp\.port|service\.adb\.tcp\.port|persist\.sys\.usb\.config|sys\.usb\.config)=' "$PROP_FILE" > "$PROP_FILE.tmp" 2>/dev/null || true
+      mv "$PROP_FILE.tmp" "$PROP_FILE" || true
       cat >> "$PROP_FILE" <<'PROPS'
 ro.setupwizard.mode=DISABLED
 ro.build.characteristics=phone
@@ -128,21 +141,21 @@ service.adb.tcp.port=5555
 persist.sys.usb.config=adb
 sys.usb.config=adb
 PROPS
-      ( cd "$TMP_PATCH/ramdisk" && find . | cpio -o -H newc --quiet 2>/dev/null | gzip -9 ) > "$TMP_PATCH/ramdisk-new.img"
-      if [ -s "$TMP_PATCH/ramdisk-new.img" ]; then
-        xorriso -dev "$PATCHED_ISO" -boot_image any keep -update "$TMP_PATCH/ramdisk-new.img" /ramdisk.img >/dev/null 2>&1           && echo ">>> ramdisk patched (setup wizard DISABLED)"           || echo "::warning::xorriso ramdisk update failed - using unpatched ramdisk"
+      ( cd "$TMP_PATCH/unpack" && find . | cpio -o -H newc --quiet 2>/dev/null | gzip -9 ) > "$TMP_PATCH/img-new"
+      if [ -s "$TMP_PATCH/img-new" ] && xorriso -dev "$PATCHED_ISO" -boot_image any keep -update "$TMP_PATCH/img-new" "$REL" >/dev/null 2>&1; then
+        echo ">>> Patched $REL (setup wizard DISABLED, phone mode, ADB on)"
+        PATCHED_ANY=1
+      else
+        echo "::warning::could not update $REL in ISO"
       fi
-      # Force portrait phone resolution in any boot config we can find.
-      for cfg in /isolinux/isolinux.cfg /efi/boot/grub.cfg /boot/grub/grub.cfg; do
-        if xorriso -osirrox on -indev "$ISO_FILE" -extract "$cfg" "$TMP_PATCH/cfg" >/dev/null 2>&1 && [ -s "$TMP_PATCH/cfg" ]; then
-          sed -i 's|initrd=/initrd.img|initrd=/initrd.img video=720x1280|g; s|kernel /kernel|kernel /kernel video=720x1280|g' "$TMP_PATCH/cfg"
-          xorriso -dev "$PATCHED_ISO" -boot_image any keep -update "$TMP_PATCH/cfg" "$cfg" >/dev/null 2>&1 || true
-          rm -f "$TMP_PATCH/cfg"
-        fi
-      done
-    else
-      echo "::warning::ramdisk.img not found in ISO - cannot pre-disable setup wizard"
-    fi
+    done
+    # Force portrait phone resolution in any boot config we can find.
+    while IFS= read -r cfg; do
+      REL="/${cfg#$TMP_PATCH/isofs/}"
+      sed -i 's|initrd=/initrd.img|initrd=/initrd.img video=720x1280|g; s|kernel /kernel|kernel /kernel video=720x1280|g' "$cfg"
+      xorriso -dev "$PATCHED_ISO" -boot_image any keep -update "$cfg" "$REL" >/dev/null 2>&1 || true
+    done < <(find "$TMP_PATCH/isofs" -type f \( -name 'isolinux.cfg' -o -name 'grub.cfg' \) 2>/dev/null)
+    [ "$PATCHED_ANY" = "1" ] || echo "::warning::no patchable ramdisk found - wizard may show, ADB skipper is backup"
     rm -rf "$TMP_PATCH"
     ls -lh "$PATCHED_ISO" || true
   else
