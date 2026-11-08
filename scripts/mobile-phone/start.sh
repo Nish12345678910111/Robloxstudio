@@ -39,12 +39,25 @@ RAM_MB="${RAM_MB:-4096}"
 CPU_CORES="${CPU_CORES:-2}"
 DISK_GB="${DISK_GB:-16}"
 SESSION_MINUTES="${SESSION_MINUTES:-300}"
-ANDROID_ISO_URL="${ANDROID_ISO_URL:-https://sourceforge.net/projects/android-x86/files/Release%209.0/android-x86_64-9.0-r2.iso/download}"
+EDITION="${EDITION:-android11}"
+if [ -n "${ANDROID_ISO_URL:-}" ]; then
+  ISO_BASENAME="custom.iso"
+elif [ "$EDITION" = "android9" ]; then
+  ANDROID_ISO_URL="https://sourceforge.net/projects/android-x86/files/Release%209.0/android-x86_64-9.0-r2.iso/download"
+  ISO_BASENAME="android-x86.iso"
+else
+  # Bliss OS 14.10.3 (Android 11) Generic x86_64 - official SourceForge build
+  EDITION="android11"
+  ANDROID_ISO_URL="https://sourceforge.net/projects/blissos-x86/files/Official/BlissOS14/FOSS/Generic/Bliss-v14.10.3-x86_64-OFFICIAL-foss-20241012.iso/download"
+  ISO_BASENAME="bliss11.iso"
+fi
+echo ">>> Android edition: $EDITION"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 NOVNC_PORT=6080
 VNC_DISPLAY=0
 VNC_PORT=$((5900 + VNC_DISPLAY))
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$WORKDIR_PHONE"
 cd "$WORKDIR_PHONE"
 
@@ -63,7 +76,7 @@ fi
 export VNC_PASSWORD
 
 # ------------------------------------------------------------------- ISO -----
-ISO_FILE="$WORKDIR_PHONE/android-x86.iso"
+ISO_FILE="$WORKDIR_PHONE/$ISO_BASENAME"
 if [ ! -s "$ISO_FILE" ]; then
   echo ">>> Downloading Android-x86 ISO..."
   echo "    $ANDROID_ISO_URL"
@@ -90,7 +103,7 @@ ls -lh "$ISO_FILE"
 #   ro.debuggable / persist.adb.tcp.port -> ADB backup skipper can connect
 # and force a portrait phone video mode in the boot config. The result is
 # cached as android-phone.iso, so this one-time patch survives re-runs.
-PATCHED_ISO="$WORKDIR_PHONE/android-phone.iso"
+PATCHED_ISO="$WORKDIR_PHONE/${ISO_BASENAME%.iso}-phone.iso"
 if [ ! -s "$PATCHED_ISO" ]; then
   if command -v xorriso >/dev/null 2>&1; then
     echo ">>> Patching ISO (disable setup wizard, phone mode, portrait)..."
@@ -161,6 +174,11 @@ else
 fi
 
 # ------------------------------------------------------------------ QEMU -----
+if [ "$EDITION" = "android11" ]; then
+  GPU_ARGS=(-device "virtio-vga,xres=720,yres=1280")
+else
+  GPU_ARGS=(-device "VGA,vgamem_mb=64,xres=720,yres=1280")
+fi
 echo ">>> Starting QEMU (Android phone, 720x1280 portrait)..."
 rm -f qemu-monitor.sock qemu.pid
 qemu-system-x86_64 \
@@ -173,7 +191,7 @@ qemu-system-x86_64 \
   -drive "file=${DISK_FILE},format=qcow2,if=virtio,cache=writeback" \
   -cdrom "$BOOT_ISO" \
   -boot "order=d,menu=off" \
-  -device "VGA,vgamem_mb=64,xres=720,yres=1280" \
+  ${GPU_ARGS[@]+"${GPU_ARGS[@]}"} \
   -device "nec-usb-xhci,id=usb" \
   -device "usb-tablet,bus=usb.0" \
   -device "usb-kbd,bus=usb.0" \
@@ -227,7 +245,7 @@ if command -v adb >/dev/null 2>&1; then
     $S settings put secure user_setup_complete 1 >/dev/null 2>&1 || true
     $S settings put global setup_wizard_has_run 1 >/dev/null 2>&1 || true
     # Disable every setup-wizard flavour Android-x86 9 may ship.
-    for pkg in com.google.android.setupwizard com.android.setupwizard com.android.provision; do
+    for pkg in com.google.android.setupwizard com.android.setupwizard com.android.provision org.lineageos.setupwizard com.bliss.setupwizard org.blissroms.setupwizard; do
       $S pm disable-user --user 0 "$pkg" >/dev/null 2>&1 || true
       $S pm clear "$pkg" >/dev/null 2>&1 || true
     done
@@ -288,6 +306,29 @@ if [ -z "$TUNNEL_URL" ]; then
   exit 1
 fi
 
+# ------------------------------------------- own fast viewer (no noVNC) -----
+# viewer.py streams the screen with ADB screenrecord->ffmpeg MJPEG (fast,
+# low latency vs VNC) and sends tap/swipe/keyboard/clipboard back over ADB.
+# It gets its OWN Cloudflare tunnel; the noVNC tunnel above stays as fallback.
+VIEWER_URL=""
+if [ -f "$REPO_ROOT/scripts/mobile-phone/viewer.py" ] && command -v ffmpeg >/dev/null 2>&1; then
+  echo ">>> Starting own fast viewer on 127.0.0.1:8081 ..."
+  PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" > viewer.log 2>&1 &
+  echo $! > viewer.pid
+  sleep 2
+  : > cloudflared-viewer.log
+  cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:8081" > cloudflared-viewer.log 2>&1 &
+  echo $! > cloudflared-viewer.pid
+  for _ in $(seq 1 45); do
+    VIEWER_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-viewer.log | head -n1 || true)"
+    [ -n "$VIEWER_URL" ] && break
+    sleep 2
+  done
+  echo ">>> Viewer URL: ${VIEWER_URL:-FAILED (noVNC fallback still works)}"
+else
+  echo "::warning::viewer.py/ffmpeg missing - dashboard will use noVNC fallback"
+fi
+
 # ------------------------------------------------------- report phone info ---
 # Used by the NishCloudPhone dashboard: it downloads this file as a GitHub
 # Actions artifact (auth-only, never committed to this PUBLIC repo) to learn
@@ -295,7 +336,7 @@ fi
 PHONE_INFO_FILE="${PHONE_INFO_FILE:-$WORKDIR_PHONE/cloud-phone-info.json}"
 mkdir -p "$(dirname "$PHONE_INFO_FILE")"
 cat > "$PHONE_INFO_FILE" <<EOF
-{"phoneId":"${PHONE_ID:-manual}","tunnelUrl":"${TUNNEL_URL}","novncUrl":"${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale","password":"${VNC_PASSWORD}","startedAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+{"phoneId":"${PHONE_ID:-manual}","edition":"${EDITION}","tunnelUrl":"${TUNNEL_URL}","novncUrl":"${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale&quality=5&compression=8","viewerUrl":"${VIEWER_URL}","password":"${VNC_PASSWORD}","startedAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 EOF
 echo ">>> Phone info written to $PHONE_INFO_FILE"
 
@@ -306,6 +347,7 @@ banner() {
 ====================================================================
   📱  YOUR MOBILE PHONE IS LIVE
 ====================================================================
+  Fast viewer    : ${VIEWER_URL:-unavailable - use noVNC URL}
   Cloudflare URL : ${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale
   VNC Password   : ${VNC_PASSWORD}
 
@@ -355,7 +397,7 @@ fi
 
 cleanup() {
   echo ">>> Shutting down phone / tunnel..."
-  kill "$(cat cloudflared.pid 2>/dev/null)" "$(cat websockify.pid 2>/dev/null)" 2>/dev/null || true
+  kill "$(cat cloudflared.pid 2>/dev/null)" "$(cat websockify.pid 2>/dev/null)" "$(cat viewer.pid 2>/dev/null)" "$(cat cloudflared-viewer.pid 2>/dev/null)" 2>/dev/null || true
   [ -f qemu.pid ] && kill "$(cat qemu.pid)" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM

@@ -19,6 +19,12 @@ on:
         required: false
         default: "manual"
         type: string
+      edition:
+        description: "Android edition"
+        required: true
+        default: "android11"
+        type: choice
+        options: ["android11", "android9"]
       session_minutes:
         description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
@@ -66,7 +72,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils \
             novnc websockify \
-            socat curl ca-certificates adb xorriso cpio aria2
+            socat curl ca-certificates adb xorriso cpio aria2 ffmpeg
           # /dev/kvm exists but is root:kvm 0660 - make it writable so QEMU
           # gets real hardware acceleration instead of slow TCG emulation.
           sudo chmod 666 /dev/kvm || true
@@ -86,8 +92,18 @@ jobs:
         with:
           path: |
             .phone-vm/android-x86.iso
-            .phone-vm/android-phone.iso
+            .phone-vm/android-x86-phone.iso
+            .phone-vm/bliss11.iso
+            .phone-vm/bliss11-phone.iso
           key: cloud-phone-android-x86-iso-v2
+
+      - name: Cache Bliss OS Android 11 ISO
+        uses: actions/cache@v4
+        with:
+          path: |
+            .phone-vm/bliss11.iso
+            .phone-vm/bliss11-phone.iso
+          key: cloud-phone-bliss11-iso-v1
 
       - name: Start Cloud Phone (QEMU + noVNC + Cloudflare tunnel)
         env:
@@ -98,6 +114,7 @@ jobs:
           CPU_CORES: ${{ inputs.cpu_cores }}
           DISK_GB: ${{ inputs.disk_gb }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
+          EDITION: ${{ inputs.edition }}
         run: |
           chmod +x scripts/mobile-phone/start.sh
           ./scripts/mobile-phone/start.sh
@@ -105,6 +122,7 @@ jobs:
           sed 's/"password":"[^"]*"/"password":"********"/' cloud-phone-info.json
 
       - name: Save Android ISO to cache NOW (not at job end)
+        continue-on-error: true
         # actions/cache normally saves in post-job, which never happens when
         # a 340-min session is cancelled - that is why every run re-downloaded
         # 921 MB. Saving explicitly here makes the NEXT phone start fast.
@@ -112,7 +130,9 @@ jobs:
         with:
           path: |
             .phone-vm/android-x86.iso
-            .phone-vm/android-phone.iso
+            .phone-vm/android-x86-phone.iso
+            .phone-vm/bliss11.iso
+            .phone-vm/bliss11-phone.iso
           key: cloud-phone-android-x86-iso-v2
 
       - name: Publish phone info for the dashboard (private artifact)
