@@ -23,3 +23,4 @@ button.ghost{background:transparent;border:1px solid #2a3a63}button.stop{backgro
 .fsBtn{position:absolute;top:10px;right:10px;z-index:6;background:rgba(20,32,64,.92);border:1px solid #35508f;font-size:13px;padding:9px 12px}
 .phoneWrap:fullscreen .fsBtn{position:fixed}
 .footBtns{display:flex;gap:8px;flex-wrap:wrap}button.del{background:#2a1220;color:#ff6b9d;padding:8px 12px}button.stop{padding:8px 12px}
+.footLinks{display:flex;gap:14px}
