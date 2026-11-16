@@ -9,7 +9,7 @@ over ADB: tap / swipe / keys / typed text / paste.
 Env: VIEWER_PORT (8081), PHONE_PASSWORD (gate + API key), ADB_SERIAL.
 Only stdlib + adb + ffmpeg are used.
 """
-import hashlib, hmac, json, os, subprocess, threading, time
+import hashlib, hmac, json, os, select, subprocess, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("VIEWER_PORT", "8081"))
@@ -23,7 +23,7 @@ def grab_screencap():
         if not r.stdout or len(r.stdout) < 2000:
             return
         c = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", "pipe:0",
-                            "-vf", f"scale={SW}:{SH}", "-q:v", "5", "-f", "image2pipe",
+                            "-vf", f"scale={SW}:{SH}", "-q:v", "8", "-f", "image2pipe",
                             "-vcodec", "mjpeg", "pipe:1"],
                            input=r.stdout, capture_output=True, timeout=15)
         if c.stdout and len(c.stdout) > 2000:
@@ -44,9 +44,9 @@ def run_dump_pipeline():
                 _last_wake[0] = time.time()
                 adb("shell", "input", "keyevent", "224")  # wake display
             grab_screencap()
-            time.sleep(0.5)
+            time.sleep(0.15)
         else:
-            time.sleep(0.5)
+            time.sleep(0.4)
 
 PASSWORD = os.getenv("PHONE_PASSWORD", "")
 SERIAL = os.environ.get("ADB_SERIAL", "127.0.0.1:5555")
@@ -65,43 +65,59 @@ def adb(*args, timeout=15):
         print("adb error:", e, flush=True)
 
 def run_pipeline():
-    """Keep one shared screencap pipeline alive forever, store latest JPEG."""
+    """Live stream: screenrecord -> ffmpeg -> latest JPEG, with a watchdog.
+
+    The old version did a bare blocking read on ffmpeg's stdout: if the
+    encoder stalled (common on software GPUs), the read blocked FOREVER,
+    the pipeline never restarted, and users got only the ~5s rescue
+    screenshots. Now: no frame for 4s = kill everything and restart.
+    """
     while True:
+        rec = ff = None
         try:
             if ":" in SERIAL: adb("connect", SERIAL, timeout=10)
             rec = subprocess.Popen(
                 ["adb", "-s", SERIAL, "exec-out", "screenrecord",
                  "--output-format=h264", f"--size={SW}x{SH}",
-                 "--bit-rate=1400000", "--time-limit=170", "-"],
+                 "--bit-rate=1400000", "--time-limit=180", "-"],
                 stdout=subprocess.PIPE)
             ff = subprocess.Popen(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error",
                  "-fflags", "nobuffer", "-flags", "low_delay",
+                 "-probesize", "32768", "-analyzeduration", "0",
                  "-i", "pipe:0", "-vf", "fps=15", "-q:v", "7",
                  "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"],
                 stdin=rec.stdout, stdout=subprocess.PIPE)
-            buf = b""
+            rec.stdout.close()
+            fd = ff.stdout.fileno()
+            buf = b""; last_frame = time.time()
             while True:
-                chunk = ff.stdout.read(65536)
-                if not chunk:
-                    break
+                r, _, _ = select.select([fd], [], [], 4)
+                if not r:
+                    if time.time() - last_frame > 4:
+                        print("stream stalled - restarting pipeline", flush=True)
+                        break  # stalled -> restart
+                    continue
+                chunk = os.read(fd, 65536)
+                if not chunk: break
                 buf += chunk
                 # split JPEG frames SOI..EOI
                 while True:
                     a = buf.find(b"\xff\xd8")
                     b = buf.find(b"\xff\xd9", a + 2) if a >= 0 else -1
-                    if a < 0 or b < 0:
-                        break
-                    frame = buf[a:b + 2]
-                    buf = buf[b + 2:]
+                    if a < 0 or b < 0: break
+                    frame = buf[a:b + 2]; buf = buf[b + 2:]
                     with lock:
                         latest["jpg"], latest["t"] = frame, time.time()
-                if len(buf) > 4_000_000:
-                    buf = b""
-            rec.kill(); ff.kill()
+                    last_frame = time.time()
+                if len(buf) > 4_000_000: buf = b""
         except Exception as e:
             print("pipeline error:", e, flush=True)
-        time.sleep(2)
+        for proc in (rec, ff):
+            try:
+                if proc: proc.kill()
+            except Exception: pass
+        time.sleep(1)
 
 HTML = """<!doctype html><html><head><meta charset=utf-8>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
