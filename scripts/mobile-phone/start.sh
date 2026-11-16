@@ -96,12 +96,12 @@ if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
     || echo no | avdmanager create avd -n phone -k "$IMG_PKG" --force >/dev/null
   CFG="$AVD_HOME_DIR/phone.avd/config.ini"
-  sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=720/; s/^hw.lcd.height=.*/hw.lcd.height=1280/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
+  sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=540/; s/^hw.lcd.height=.*/hw.lcd.height=960/; s/^hw.lcd.density=.*/hw.lcd.density=240/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
 fi
 ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
   nohup "$SDK/emulator/emulator" -avd phone -no-window -no-audio -no-boot-anim \
-    -gpu swiftshader_indirect -accel "$1" -memory 8192 -cores 4 -partition-size 32768 \
+    -gpu swiftshader_indirect -accel "$1" -memory 4096 -cores 4 -partition-size 32768 \
     -port 5554 -no-snapshot -wipe-data -netdelay none -netspeed full \
     > emulator.log 2>&1 &
   echo $! > emulator.pid
@@ -126,8 +126,8 @@ adb start-server >/dev/null 2>&1 || true
   for pkg in com.google.android.setupwizard com.android.setupwizard; do
     $S pm disable-user --user 0 "$pkg" >/dev/null 2>&1 || true
   done
-  $S wm size 720x1280 >/dev/null 2>&1 || true
-  $S wm density 320 >/dev/null 2>&1 || true
+  $S wm size 540x960 >/dev/null 2>&1 || true
+  $S wm density 240 >/dev/null 2>&1 || true
   $S settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
   $S settings put system screen_off_timeout 2147483647 >/dev/null 2>&1 || true
   $S svc power stayon true >/dev/null 2>&1 || true
