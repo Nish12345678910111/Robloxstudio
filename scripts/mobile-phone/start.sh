@@ -81,17 +81,29 @@ export VNC_PASSWORD
 # work), WiFi is built in, and the home launcher is the real phone launcher.
 if [ "$EDITION" = "android11" ] && [ "${USE_EMULATOR:-1}" = "1" ]; then
   echo ">>> Starting Android 11 phone..."
-  SDK="$WORKDIR_PHONE/sdk"; AVD_HOME_DIR="$WORKDIR_PHONE/avd"
-  mkdir -p "$SDK" "$AVD_HOME_DIR"
-  export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
-  if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
-    curl -fL --retry 5 --retry-delay 5 -o /tmp/cmdtools.zip \
-      https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-    rm -rf "$SDK/cmdline-tools"; mkdir -p "$SDK/cmdline-tools"
-    unzip -q -o /tmp/cmdtools.zip -d "$SDK/cmdline-tools"
-    mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+  # Fast path: CI runners ship Java + Android SDK preinstalled - use them and
+  # skip every big download. Only fall back to a private SDK when missing.
+  SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+  if [ -z "$SDK" ] || [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+    SDK="$WORKDIR_PHONE/sdk"
+    if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+      curl -fsSL --retry 5 -o /tmp/cmdtools.zip \
+        https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+      rm -rf "$SDK/cmdline-tools"; mkdir -p "$SDK/cmdline-tools"
+      unzip -q -o /tmp/cmdtools.zip -d "$SDK/cmdline-tools"
+      mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+    fi
   fi
+  AVD_HOME_DIR="$WORKDIR_PHONE/avd"; mkdir -p "$AVD_HOME_DIR"
+  export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
   export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
+  # ffmpeg as ONE static binary (~15s) instead of a 70-package apt install
+  mkdir -p "$WORKDIR_PHONE/bin"
+  if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x "$WORKDIR_PHONE/bin/ffmpeg" ]; then
+    curl -fsSL --retry 3 -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+      && tar -xJf /tmp/ff.tar.xz -C /tmp && cp /tmp/ffmpeg-*-amd64-static/ffmpeg "$WORKDIR_PHONE/bin/ffmpeg" && chmod +x "$WORKDIR_PHONE/bin/ffmpeg" || true
+  fi
+  export PATH="$WORKDIR_PHONE/bin:$PATH"
   yes | sdkmanager --licenses >/dev/null 2>&1 || true
   [ -x "$SDK/emulator/emulator" ] || sdkmanager "emulator" "platform-tools" >/dev/null
   IMG_PKG="system-images;android-30;google_apis;x86_64"
@@ -108,11 +120,11 @@ if [ "$EDITION" = "android11" ] && [ "${USE_EMULATOR:-1}" = "1" ]; then
   echo $! > emulator.pid
   SERIAL="emulator-5554"
   adb start-server >/dev/null 2>&1 || true
-  for _ in $(seq 1 120); do
-    BOOTED="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-    [ "$BOOTED" = "1" ] && break; sleep 5
-  done
   (
+    for _ in $(seq 1 120); do
+      BOOTED="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+      [ "$BOOTED" = "1" ] && break; sleep 5
+    done
     S="adb -s $SERIAL shell"
     $S settings put global device_provisioned 1 >/dev/null 2>&1 || true
     $S settings put secure user_setup_complete 1 >/dev/null 2>&1 || true
