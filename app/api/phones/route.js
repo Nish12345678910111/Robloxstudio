@@ -39,9 +39,11 @@ export async function GET(req) {
       const ageMs = Date.now() - new Date(r.created_at).getTime();
       if (gh && gh.status === "completed" && ageMs > 24 * 3600 * 1000 && cleaned < 5) {
         cleaned++;
-        try { await deleteRun(gh.runId); } catch {}
-        await deletePhoneRow(r.phone_id).catch(() => {});
-        rows.splice(rows.indexOf(r), 1);
+        // Only remove the row when the run is really gone upstream -
+        // never leave an orphan run running behind a deleted phone.
+        const st = await deleteRun(gh.runId).catch(() => 0);
+        const gone = st === 204 || st === 404 || (await getRunStatus(gh.runId).catch(() => "unknown")) === null;
+        if (gone) { await deletePhoneRow(r.phone_id).catch(() => {}); rows.splice(rows.indexOf(r), 1); }
       }
     }
   }
