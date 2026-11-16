@@ -39,7 +39,7 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
 .credBox{background:#0a1122;border:1px solid var(--line);border-radius:16px;padding:12px 15px;margin:14px 0;font-size:13.5px;word-break:break-all}
 .credBox p{margin:6px 0}
 .phoneWrap{position:relative}
-.phoneBox{position:relative;width:min(94vw,430px);margin:0 auto;aspect-ratio:9/16;background:#000;border:10px solid #141d38;border-radius:34px;overflow:hidden;box-shadow:inset 0 0 0 2px #000,0 14px 34px rgba(0,0,0,.5)}
+.phoneBox{position:relative;width:100%;max-width:430px;margin:0 auto;aspect-ratio:9/16;background:#000;border:10px solid #141d38;border-radius:34px;overflow:hidden;box-shadow:inset 0 0 0 2px #000,0 14px 34px rgba(0,0,0,.5)}
 .phoneBox iframe{width:100%;height:100%;border:0;display:block}
 .phoneWait{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--mut);text-align:center;padding:24px;white-space:pre-line}
 .spin{width:42px;height:42px;border-radius:50%;border:4px solid #22335e;border-top-color:var(--acc);animation:sp 0.9s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
@@ -61,7 +61,7 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
 .btnLink{display:inline-block;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff!important;padding:11px 18px;border-radius:14px;font-weight:800;text-decoration:none;box-shadow:0 8px 26px rgba(90,110,255,.35)}
 .notFound{text-align:center;padding:70px 22px;background:var(--panel);border:1px solid var(--line);border-radius:26px;margin-top:40px}
 .nfIcon{font-size:56px}
-.phonePageBox{position:relative;width:min(94vw,430px);margin:20px auto;aspect-ratio:9/16;background:#000;border:10px solid #141d38;border-radius:34px;overflow:hidden}
+.phonePageBox{position:relative;width:100%;max-width:430px;margin:20px auto;aspect-ratio:9/16;background:#000;border:10px solid #141d38;border-radius:34px;overflow:hidden}
 .phonePageBox iframe{width:100%;height:100%;border:0;display:block}
 @media(max-width:860px){.side{position:fixed;left:0;top:0;height:100dvh;box-shadow:24px 0 70px rgba(0,0,0,.65)}.side.closed{margin-left:-280px}.wrap{padding-top:18px}}
 /* --- mobile fixes: direct create button, true one-column layout --- */
