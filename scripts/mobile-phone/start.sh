@@ -272,6 +272,14 @@ if command -v adb >/dev/null 2>&1; then
     $S settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
     $S settings put system user_rotation 0 >/dev/null 2>&1 || true
     $S svc power stayon true >/dev/null 2>&1 || true
+    # Auto WiFi: QEMU gives the phone a virtio-net cable; Android-x86/Bliss
+    # presents that as VirtWiFi. Turn WiFi ON and auto-connect so apps see a
+    # connected network with zero tapping (no nearby-network picker, ever).
+    $S settings put global wifi_on 1 >/dev/null 2>&1 || true
+    $S settings put global wifi_networks_available_notification_enabled 0 >/dev/null 2>&1 || true
+    $S svc wifi enable >/dev/null 2>&1 || true
+    $S cmd wifi set-wifi-enabled enabled >/dev/null 2>&1 || true
+    $S cmd wifi connect-network VirtWiFi open >/dev/null 2>&1 || true
     # Land on the launcher home screen.
     $S input keyevent 3 >/dev/null 2>&1 || true
     $S am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true

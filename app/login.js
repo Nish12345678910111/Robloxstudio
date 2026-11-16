@@ -1,16 +1,26 @@
 "use client";
 import { useState } from "react";
 export default function Login({ configured }) {
-  const [pw, setPw] = useState(""), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState("login");
+  const [name, setName] = useState(""), [username, setUsername] = useState(""), [pw, setPw] = useState("");
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
   async function go(e) { e.preventDefault(); setBusy(true); setErr("");
-    const r = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
-    if (r.ok) location.reload(); else { setErr((await r.json()).error || "Wrong password"); setBusy(false); } }
+    const r = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mode === "register" ? { mode, name, username, password: pw } : { mode, username, password: pw }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) location.reload(); else { setErr(d.error || "Something went wrong"); setBusy(false); } }
   return (<main className="loginWrap"><form className="loginCard" onSubmit={go}>
     <div className="logo">☁️📱</div><h1>NishCloudPhone</h1>
-    <p className="muted">Private dashboard — sign in to launch cloud phones.</p>
-    {!configured && <p className="warn">Setup needed: set <b>DASHBOARD_PASSWORD</b> in Vercel → Project → Settings → Environment Variables, then redeploy.</p>}
-    <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Dashboard password" autoFocus />
+    <p className="muted">{mode === "register" ? "Create your free account" : "Welcome back — login to your cloud phones"}</p>
+    {!configured && <p className="warn">Database setup needed: add <b>AIVEN_DATABASE_URL</b> in Vercel env vars, then redeploy.</p>}
+    {mode === "register" && <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" autoComplete="name" />}
+    <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" autoComplete="username" autoFocus={mode === "login"} />
+    <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Password (min 8 characters)" autoComplete={mode === "register" ? "new-password" : "current-password"} />
     {err && <p className="err">{err}</p>}
-    <button disabled={busy}>{busy ? "Checking…" : "Unlock dashboard →"}</button>
+    <button disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account →" : "Login →"}</button>
+    <p className="switch">{mode === "register"
+      ? <>Already have an account? <a href="#" onClick={e => { e.preventDefault(); setMode("login"); setErr(""); }}>Login</a></>
+      : <>New here? <a href="#" onClick={e => { e.preventDefault(); setMode("register"); setErr(""); }}>Create account</a></>}</p>
+    <p className="tiny">🔒 Passwords are stored only as secure hashes. Max 5 free cloud phones per account.</p>
   </form></main>);
 }
