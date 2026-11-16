@@ -58,7 +58,7 @@ export default function Dashboard({ user, tokenReady }) {
   const [phones, setPhones] = useState([]), [msg, setMsg] = useState(""), [notice, setNotice] = useState(null), [creating, setCreating] = useState(false);
   const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem("ncp_hidden") || "[]")); } catch { return new Set(); } });
   const load = useCallback(async () => { const r = await fetch("/api/phones"); if (r.ok) { const d = await r.json(); setPhones(d.phones || []); setNotice(d.notice || null); } }, []);
-  useEffect(() => { load(); const i = setInterval(load, 8000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { load(); const i = setInterval(() => { if (!document.hidden) load(); }, 20000); return () => clearInterval(i); }, [load]);
   async function create() {
     if (creating) return;
     setCreating(true); setMsg("");

@@ -24,8 +24,9 @@ export async function GET(req) {
   // the admin sees all. Nothing here exposes the repo to ordinary users.
   let live = [], liveOk = true;
   if (tokenConfigured()) {
-    try { live = await listPhones(); }
-    catch { await new Promise(r => setTimeout(r, 600)); try { live = await listPhones(true); } catch { liveOk = false; } }
+    const withInfo = user.role === "admin" || rows.some(r => !r.viewer_url);
+    try { live = await listPhones(false, withInfo); }
+    catch { await new Promise(r => setTimeout(r, 600)); try { live = await listPhones(true, withInfo); } catch { liveOk = false; } }
   }
   const byId = new Map(live.map(p => [p.phoneId, p]));
   // AUTO-CLEAN (1-day rule): stopping a phone never deletes it. Only a
