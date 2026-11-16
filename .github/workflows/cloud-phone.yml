@@ -96,9 +96,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-            .phone-vm/avd
-            .phone-vm/bin
-          key: cloud-phone-emulator-v2
+          key: cloud-phone-emulator-v3
 
       - name: Start Cloud Phone
         env:
@@ -121,9 +119,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-            .phone-vm/avd
-            .phone-vm/bin
-          key: cloud-phone-emulator-v2
+          key: cloud-phone-emulator-v3
 
       - name: Publish phone info (private backup channel)
         uses: actions/upload-artifact@v4
