@@ -83,3 +83,13 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
   .loginCard{padding:28px 20px}
   .phonePageBox{max-width:min(92vw,420px)}
 }
+/* --- square phone box, tight framing, sidebar close --- */
+.brandRow{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.sideX{width:38px;height:38px;flex:0 0 auto;border-radius:12px;background:#2b0e18;border:1px solid #7f1d2f;color:#ffb4c0;font-size:15px}
+.phoneBox{border:3px solid #1b2745;border-radius:14px;box-shadow:0 10px 26px rgba(0,0,0,.5)}
+.phoneBox iframe{background:#000}
+.fsBtn{right:8px;top:8px}
+@media(max-width:860px){
+  .card{padding:10px}
+  .phoneBox{max-width:100%;border-radius:12px}
+}

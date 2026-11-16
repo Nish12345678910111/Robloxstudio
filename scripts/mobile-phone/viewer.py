@@ -39,6 +39,7 @@ def dump_frame():
     except Exception as e:
         print("screendump error:", e, flush=True)
 def run_dump_pipeline():
+    time.sleep(3); monitor("sendkey shift")  # wake screen if it slept
     while True:
         with lock: stale = time.time() - latest["t"] > 5
         if stale: dump_frame(); time.sleep(0.45)
@@ -106,9 +107,11 @@ body{margin:0;background:#070b16;color:#e8eefc;font-family:system-ui;text-align:
 #gate{margin:18vh auto;max-width:320px;background:#0d1528;padding:28px;border-radius:20px;border:1px solid #1d2b4d}
 input,button{padding:12px;border-radius:12px;border:1px solid #2a3a63;background:#0a1122;color:#fff;font-size:16px}
 button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor:pointer}
-#bar{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;display:flex;gap:6px;background:rgba(10,16,32,.82);backdrop-filter:blur(10px);padding:8px 10px;border-radius:999px;border:1px solid #2a3a63;z-index:9}
-#bar button{background:transparent;border:0;font-size:13px;padding:7px 10px}
-#scr{max-width:min(96vw,430px);max-height:82vh;border:6px solid #1f2a47;border-radius:28px;touch-action:none;background:#000}
+#bar{position:fixed;left:50%;transform:translate(-50%,0);bottom:12px;display:flex;gap:2px;background:rgba(10,16,32,.85);backdrop-filter:blur(10px);padding:6px;border-radius:999px;border:1px solid #2a3a63;z-index:9;transition:transform .25s ease,opacity .25s ease;max-width:94vw}
+#bar.hide{transform:translate(-50%,140%);opacity:0;pointer-events:none}
+#bar button{background:transparent;border:0;font-size:12px;padding:8px 9px;white-space:nowrap;border-radius:999px}
+#tgl{position:fixed;right:12px;bottom:12px;z-index:10;width:42px;height:42px;border-radius:50%;background:rgba(10,16,32,.9);border:1px solid #2a3a63;font-size:19px;line-height:1}
+#scr{width:100vw;height:100dvh;object-fit:contain;touch-action:none;background:#000;display:block}
 #kbd{position:absolute;opacity:0;pointer-events:none}
 </style></head><body>
 <div id="gate"><h2>☁️📱 NishCloudPhone</h2><p>Enter the phone password</p>
@@ -120,6 +123,7 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
   <button id="clip">📋 Paste my clipboard</button><button id="kbdbtn">⌨️ Keyboard</button>
  </div>
  <img id="scr" alt=""><textarea id="kbd" autocomplete="off"></textarea>
+ <button id="tgl" title="Show / hide buttons">⌄</button>
 </div>
 <script>
 const $=s=>document.querySelector(s); let lastVal="";
@@ -133,6 +137,7 @@ document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>post('/key',{code
 $('#clip').onclick=async()=>{try{const t=await navigator.clipboard.readText(); if(t) post('/text',{text:t});}catch(e){alert('Clipboard blocked - tap Keyboard and paste there');$('#kbd').focus();}};
 $('#kbdbtn').onclick=()=>{lastVal='';$('#kbd').value='';$('#kbd').focus();};
 $('#kbd').addEventListener('input',e=>{const v=e.target.value; if(v.length>lastVal.length) post('/text',{text:v.slice(lastVal.length)}); else if(v.length<lastVal.length) post('/key',{code:67}); lastVal=v;});
+$('#tgl').onclick=()=>{const b=$('#bar'),h=b.classList.toggle('hide');$('#tgl').textContent=h?'⌃':'⌄';};
 let down=null; const img=$('#scr');
 const pos=e=>{const r=img.getBoundingClientRect();return{x:Math.round((e.clientX-r.left)/r.width*720),y:Math.round((e.clientY-r.top)/r.height*1280)}};
 img.addEventListener('pointerdown',e=>{down=pos(e);img.setPointerCapture(e.pointerId)});

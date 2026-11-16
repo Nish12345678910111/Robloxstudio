@@ -30,7 +30,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
     <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android9" ? "Android 9" : "Android 11"}</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
-      <p><b>Url -</b> {screenUrl ? <a href={screenUrl} target="_blank" rel="noreferrer">{screenUrl}</a> : "waiting for Cloudflare tunnel…"}</p>
+      <p><b>Url -</b> {p.viewerUrl || p.novncUrl ? <a href={p.viewerUrl || p.novncUrl} target="_blank" rel="noreferrer">{p.viewerUrl || p.novncUrl}</a> : "waiting for Cloudflare tunnel…"}</p>
       <p><b>Password -</b> {p.password ? <code>{p.password}</code> : "•••••••• (appears when initialized)"}</p>
     </div>
     <div className="phoneWrap" ref={boxRef}>
@@ -105,7 +105,8 @@ export default function Dashboard({ user, tokenReady }) {
   const liveCount = visible.filter(p => p.status === "in_progress" || p.status === "running").length;
   return (<div className="shell">
     <aside className={sideOpen ? "side" : "side closed"}>
-      <div className="brand">☁️📱<div><b>NishCloudPhone</b><span>free cloud phones</span></div></div>
+      <div className="brandRow"><div className="brand">☁️📱<div><b>NishCloudPhone</b><span>free cloud phones</span></div></div>
+        <button className="sideX" onClick={() => setSideOpen(false)} title="Close sidebar">✕</button></div>
       <div className="userChip"><div className="avatar">{(user.name || user.username || "?").slice(0, 1).toUpperCase()}</div>
         <div><b>{user.name || user.username}</b><span>@{user.username}{user.role === "admin" ? " · 👑 admin" : ""}</span></div></div>
       <nav>
