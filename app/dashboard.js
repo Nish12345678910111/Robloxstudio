@@ -93,6 +93,8 @@ export default function Dashboard({ user, tokenReady }) {
   const [view, setView] = useState("mine");
   const [sideOpen, setSideOpen] = useState(true);
   useEffect(() => { if (window.innerWidth <= 860) setSideOpen(false); }, []);
+  const [health, setHealth] = useState(null);
+  useEffect(() => { fetch("/api/keys").then(r => r.ok && r.json()).then(d => d && setHealth(d)).catch(() => {}); }, []);
   async function delAccount() {
     const pw = prompt("Delete your account forever? Type your password to confirm. Your cloud phones will also be deleted.");
     if (pw === null) return;
@@ -116,6 +118,10 @@ export default function Dashboard({ user, tokenReady }) {
       <button className="primary wide" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button>
       <button className="ghost wide" onClick={logout}>Log out</button>
       <button className="danger wide" onClick={delAccount}>🗑 Delete my account</button>
+      {health && <div className="health"><b>🔌 Connection</b>
+        <span>Database: {health.db ? "🟢 connected" : "🔴 not connected"}</span>
+        {(health.keys || []).map(k => <span key={k.name}>{k.name}: {!k.configured ? "⚪ not added" : k.ok ? "🟢 working" : "🔴 not working"}</span>)}
+      </div>}
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
     </aside>
     <main className="wrap">
