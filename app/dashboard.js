@@ -92,6 +92,7 @@ export default function Dashboard({ user, tokenReady }) {
   async function logout() { await fetch("/api/logout", { method: "POST" }); location.reload(); }
   const [view, setView] = useState("mine");
   const [sideOpen, setSideOpen] = useState(true);
+  useEffect(() => { if (window.innerWidth <= 860) setSideOpen(false); }, []);
   async function delAccount() {
     const pw = prompt("Delete your account forever? Type your password to confirm. Your cloud phones will also be deleted.");
     if (pw === null) return;
@@ -124,5 +125,6 @@ export default function Dashboard({ user, tokenReady }) {
     <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
     {visible.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate cloud phone, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
       : <div className="grid">{visible.map(p => <PhoneCard key={p.phoneId || p.runId} p={p} user={user} onStop={stop} onDelete={del} />)}</div>}
+    <button className="fab" onClick={create} disabled={creating || !tokenReady} title="New Cloud Phone">{creating ? "…" : "＋"}</button>
     </main></div>);
 }
