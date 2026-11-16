@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getUser, tokenConfigured } from "../../../lib/auth";
 import { listPhones, dispatchPhone } from "../../../lib/github";
-import { dbConfigured, ensureSchema, createPhoneRow, countActivePhones, listPhoneRows, linkRun } from "../../../lib/db";
+import { dbConfigured, ensureSchema, createPhoneRow, countActivePhones, listPhoneRows, linkRun, purgePhones } from "../../../lib/db";
+import { clientIp, vpnBlocked, VPN_MSG } from "../../../lib/netguard";
 export const maxDuration = 60;
 
 // Friendly busy message - raw upstream errors are never shown to users.
@@ -12,9 +13,10 @@ const lastCreate = new Map(); // per-user cooldown, anti double-click spam
 export async function GET(req) {
   const user = getUser(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (await vpnBlocked(clientIp(req))) return NextResponse.json({ error: VPN_MSG, vpn: true, phones: [], totalPhones: 0 }, { status: 403 });
   if (!dbConfigured()) return NextResponse.json({ phones: [], totalPhones: 0, notice: "Database is not connected yet. Set AIVEN_DATABASE_URL in Vercel env vars, then redeploy." });
   let rows = [];
-  try { await ensureSchema(); rows = await listPhoneRows(user); }
+  try { await ensureSchema(); purgePhones().catch(() => {}); rows = await listPhoneRows(user); }
   catch { return NextResponse.json({ phones: [], totalPhones: 0, notice: BUSY }); }
 
   // Merge saved phones (visible instantly, even before the run exists) with
@@ -34,15 +36,14 @@ export async function GET(req) {
       edition: r.edition, owner: r.owner_username,
       status: gh?.status || (r.status === "busy" ? "busy" : "starting"),
       conclusion: gh?.conclusion || null, createdAt: gh?.createdAt || r.created_at,
-      viewerUrl: gh?.viewerUrl || null, novncUrl: gh?.novncUrl || null,
-      tunnelUrl: gh?.tunnelUrl || null, password: gh?.password || null,
-      runUrl: user.role === "admin" ? (gh?.runUrl || null) : null, // repo stays hidden from ordinary users
+      viewerUrl: r.viewer_url || gh?.viewerUrl || null, novncUrl: r.tunnel_url ? r.tunnel_url + "/vnc.html?autoconnect=true&resize=scale" : (gh?.novncUrl || null),
+      tunnelUrl: r.tunnel_url || gh?.tunnelUrl || null, password: r.phone_password || gh?.password || null
     });
   }
   // Admin also sees any live phones that somehow have no DB row yet.
   if (user.role === "admin") {
     const known = new Set(rows.map(r => r.phone_id));
-    for (const p of live) if (!known.has(p.phoneId) && p.phoneId !== "…") phones.push({ ...p, owner: "unknown" });
+    for (const p of live) if (!known.has(p.phoneId) && p.phoneId !== "…") phones.push({ ...p, owner: "unknown", runUrl: null });
   }
   return NextResponse.json({ phones, totalPhones: phones.filter(p => p.status !== "busy").length,
     notice: liveOk ? null : BUSY });
@@ -51,6 +52,7 @@ export async function GET(req) {
 export async function POST(req) {
   const user = getUser(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (await vpnBlocked(clientIp(req))) return NextResponse.json({ error: VPN_MSG, vpn: true }, { status: 403 });
   if (!dbConfigured()) return NextResponse.json({ error: "Database is not connected yet. Set AIVEN_DATABASE_URL in Vercel env vars, then redeploy." }, { status: 503 });
   if (!tokenConfigured()) return NextResponse.json({ error: BUSY }, { status: 503 });
   // cooldown: one tap cannot spawn duplicates

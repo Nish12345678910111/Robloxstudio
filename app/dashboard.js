@@ -33,7 +33,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
       </div>
     </div>
     <footer className="cardFoot">
-      <span className="footLinks">{p.runUrl ? <a href={p.runUrl} target="_blank" rel="noreferrer">Run details ↗</a> : null}{p.novncUrl && p.viewerUrl ? <a href={p.novncUrl} target="_blank" rel="noreferrer">fallback screen ↗</a> : null}</span>
+      <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.novncUrl && p.viewerUrl ? <a href={p.novncUrl} target="_blank" rel="noreferrer">fallback screen ↗</a> : null}</span>
       <span className="footBtns">
         {(p.status === "in_progress" || p.status === "queued") && <button className="stop" onClick={() => onStop(p.runId)}>⏹ Stop Cloud Phone</button>}
         <button className="del" onClick={() => onDelete(p)}>🗑 Delete Cloud Phone</button>
@@ -55,7 +55,7 @@ export default function Dashboard({ user, tokenReady }) {
       // Show the card instantly as "starting", don't wait for upstream.
       setPhones(ps => [{ phoneId: d.phoneId, runId: null, edition: "android11", owner: user.username,
         status: d.state === "busy" ? "busy" : "starting", createdAt: new Date().toISOString(),
-        viewerUrl: null, novncUrl: null, password: null, runUrl: null }, ...ps]);
+        viewerUrl: null, novncUrl: null, password: null }, ...ps]);
       setMsg(d.state === "busy" ? "Many users are using free cloud phones, try again later." : "✅ Cloud phone created — it is starting, the screen will appear here.");
       load();
     } else setMsg(d.error || "Many users are using free cloud phones, try again later.");
@@ -67,8 +67,8 @@ export default function Dashboard({ user, tokenReady }) {
     if (!p.runId) { setPhones(ps => ps.filter(x => x.phoneId !== p.phoneId)); setMsg("Cloud phone removed."); return; }
     setPhones(ps => ps.filter(x => x.runId !== p.runId));
     setHidden(h => { const n = new Set(h); n.add(p.runId); localStorage.setItem("ncp_hidden", JSON.stringify([...n])); return n; });
-    // Keep asking the server until GitHub confirms the workflow run is
-    // really deleted (a running phone must finish cancelling first).
+    // Keep asking the server until the phone is really gone (a running
+    // phone must finish stopping first).
     setMsg(`Deleting ${p.phoneId}… stopping it first, this can take ~30s.`);
     for (let i = 0; i < 25; i++) {
       try {
@@ -83,11 +83,19 @@ export default function Dashboard({ user, tokenReady }) {
   }
   async function logout() { await fetch("/api/logout", { method: "POST" }); location.reload(); }
   const [view, setView] = useState("mine");
+  const [sideOpen, setSideOpen] = useState(true);
+  async function delAccount() {
+    const pw = prompt("Delete your account forever? Type your password to confirm. Your cloud phones will also be deleted.");
+    if (pw === null) return;
+    const r = await fetch("/api/me", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) location.href = "/login"; else alert(d.error || "Could not delete account.");
+  }
   const visibleAll = phones.filter(p => !hidden.has(p.runId));
   const visible = user.role === "admin" && view === "all" ? visibleAll : visibleAll.filter(p => p.owner === user.username);
   const liveCount = visible.filter(p => p.status === "in_progress" || p.status === "running").length;
   return (<div className="shell">
-    <aside className="side">
+    <aside className={sideOpen ? "side" : "side closed"}>
       <div className="brand">☁️📱<div><b>NishCloudPhone</b><span>free cloud phones</span></div></div>
       <div className="userChip"><div className="avatar">{(user.name || user.username || "?").slice(0, 1).toUpperCase()}</div>
         <div><b>{user.name || user.username}</b><span>@{user.username}{user.role === "admin" ? " · 👑 admin" : ""}</span></div></div>
@@ -97,11 +105,12 @@ export default function Dashboard({ user, tokenReady }) {
       </nav>
       <button className="primary wide" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button>
       <button className="ghost wide" onClick={logout}>Log out</button>
+      <button className="danger wide" onClick={delAccount}>🗑 Delete my account</button>
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
     </aside>
     <main className="wrap">
-    <header className="top"><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 · auto WiFi · straight to home screen</p></div>
-      <div className="topBtns"><button className="primary" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button></div></header>
+    <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 · auto WiFi · straight to home screen</p></div>
+      </header>
     {!tokenReady && <p className="warn">⏳ Cloud phones are busy right now — Many users are using free cloud phones, try again later.</p>}
     {msg && <p className="msg">{msg}</p>}
     <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
