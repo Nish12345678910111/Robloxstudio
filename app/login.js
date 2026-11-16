@@ -20,7 +20,7 @@ export default function Login({ configured }) {
     <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" autoComplete="username" autoFocus={mode === "login"} />
     <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Password (min 8 characters)" autoComplete={mode === "register" ? "new-password" : "current-password"} />
     {err && <p className="err">{err}</p>}{vpn && <p className="warn">🚫 This page is disabled while a VPN / proxy is on. Turn it off and reload.</p>}
-    <button disabled={busy || vpn}>{busy ? "Please wait…" : mode === "register" ? "Create account →" : "Login →"}</button>
+    <button className="primary" disabled={busy || vpn}>{busy ? "Please wait…" : mode === "register" ? "Create account →" : "Login →"}</button>
     <p className="switch">{mode === "register"
       ? <>Already have an account? <a href="#" onClick={e => { e.preventDefault(); setMode("login"); setErr(""); }}>Login</a></>
       : <>New here? <a href="#" onClick={e => { e.preventDefault(); setMode("register"); setErr(""); }}>Create account</a></>}</p>

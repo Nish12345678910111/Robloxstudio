@@ -106,8 +106,8 @@ body{margin:0;background:#070b16;color:#e8eefc;font-family:system-ui;text-align:
 #gate{margin:18vh auto;max-width:320px;background:#0d1528;padding:28px;border-radius:20px;border:1px solid #1d2b4d}
 input,button{padding:12px;border-radius:12px;border:1px solid #2a3a63;background:#0a1122;color:#fff;font-size:16px}
 button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor:pointer}
-#bar{display:flex;gap:8px;justify-content:center;padding:10px;flex-wrap:wrap}
-#bar button{background:#1b2745;font-size:14px}
+#bar{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;display:flex;gap:6px;background:rgba(10,16,32,.82);backdrop-filter:blur(10px);padding:8px 10px;border-radius:999px;border:1px solid #2a3a63;z-index:9}
+#bar button{background:transparent;border:0;font-size:13px;padding:7px 10px}
 #scr{max-width:min(96vw,430px);max-height:82vh;border:6px solid #1f2a47;border-radius:28px;touch-action:none;background:#000}
 #kbd{position:absolute;opacity:0;pointer-events:none}
 </style></head><body>
@@ -119,10 +119,11 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
   <button data-k="187">◁ Back</button><button data-k="3">● Home</button><button data-k="187" id="rec" data-k2="82">▤ Apps</button>
   <button id="clip">📋 Paste my clipboard</button><button id="kbdbtn">⌨️ Keyboard</button>
  </div>
- <img id="scr" alt="Cloud Phone screen"><textarea id="kbd" autocomplete="off"></textarea>
+ <img id="scr" alt=""><textarea id="kbd" autocomplete="off"></textarea>
 </div>
 <script>
 const $=s=>document.querySelector(s); let lastVal="";
+if(window.__EMBED){$('#gate').style.display='none';$('#app').style.display='block';$('#scr').src='/stream.mjpg?t='+Date.now();}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
  if(r.ok){$('#gate').style.display='none';$('#app').style.display='block';$('#scr').src='/stream.mjpg?t='+Date.now();}
@@ -159,7 +160,13 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        if self.path in ("/", "/index.html") or self.path.startswith("/?") or self.path.startswith("/index.html?"):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            if (qs.get("t") or [""])[0] == TOKEN and TOKEN:
+                page = HTML.replace("const $=s=>document.querySelector(s);",
+                                    "const $=s=>document.querySelector(s); window.__EMBED=1;")
+                return self._send(200, page, extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
             return self._send(200, HTML)
         if self.path.startswith("/stream.mjpg"):
             if not authed(self): return self._send(401, "login first")
