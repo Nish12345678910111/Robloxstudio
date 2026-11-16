@@ -1,67 +1,53 @@
 #!/usr/bin/env python3
-"""NishCloudPhone own fast viewer (no noVNC).
+"""NishCloudPhone viewer for the official Android Emulator (no QEMU, no VNC).
 
 Pipeline: Android screenrecord (H.264) -> ffmpeg -> MJPEG frames shared to
-browsers. Input goes back over ADB: tap / swipe / keys / typed text / paste.
-That is far lower-latency than VNC framebuffer polling, and the page is our
-own HTML: a secure password input first, then the live phone screen.
+browsers, with an ADB screencap rescue that grabs a real frame whenever the
+stream stalls (e.g. while the emulator is still booting). Input goes back
+over ADB: tap / swipe / keys / typed text / paste.
 
-Env: VIEWER_PORT (8081), PHONE_PASSWORD (gate + API key), PHONE_W,H (720x1280)
+Env: VIEWER_PORT (8081), PHONE_PASSWORD (gate + API key), ADB_SERIAL.
 Only stdlib + adb + ffmpeg are used.
 """
 import hashlib, hmac, json, os, subprocess, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("VIEWER_PORT", "8081"))
-MONITOR = os.getenv("QEMU_MONITOR", "")
-PPM, JPG = "/tmp/ncp-frame.ppm", "/tmp/ncp-frame.jpg"
-import socket as _socket
-def monitor(cmd):
-    """QEMU human-monitor over its unix socket (works even when ADB is dead)."""
-    if not MONITOR: return False
-    try:
-        c = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM); c.settimeout(4)
-        c.connect(MONITOR); c.recv(4096)
-        c.sendall((cmd + "\n").encode()); time.sleep(0.15); c.recv(4096); c.close()
-        return True
-    except Exception:
-        return False
+
 _last_wake = [0.0]
-def frame_is_black(path):
-    """Sample the PPM: a sleeping/off display dumps as (near) pure black."""
+def grab_screencap():
+    """Rescue frame straight from the emulator via ADB screencap -> JPEG."""
     try:
-        with open(path, "rb") as f: data = f.read()
-        i = data.find(b"\n255\n"); raw = data[i + 5:] if i >= 0 else b""
-        if len(raw) < 300: return False
-        step = max(1, len(raw) // 3000)
-        sample = raw[::step][:3000]
-        return sum(sample) / len(sample) < 7
-    except Exception:
-        return False
-def dump_frame():
-    """Real screen straight from the GPU framebuffer -> JPEG. Never 'text'."""
-    if not monitor(f"screendump {PPM}"): return
-    if frame_is_black(PPM) and time.time() - _last_wake[0] > 8:
-        _last_wake[0] = time.time()
-        monitor("sendkey shift"); monitor("sendkey ret")  # wake a sleeping display
-        time.sleep(0.7)
-        if not monitor(f"screendump {PPM}"): return
-    try:
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", PPM,
-                        "-vf", f"scale={SW}:{SH}", "-q:v", "5", JPG],
-                       timeout=10, capture_output=True)
-        with open(JPG, "rb") as f: data = f.read()
-        if len(data) > 2000:
-            with lock: latest["jpg"], latest["t"] = data, time.time()
+        r = subprocess.run(["adb", "-s", SERIAL, "exec-out", "screencap", "-p"],
+                           capture_output=True, timeout=15)
+        if not r.stdout or len(r.stdout) < 2000:
+            return
+        c = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", "pipe:0",
+                            "-vf", f"scale={SW}:{SH}", "-q:v", "5", "-f", "image2pipe",
+                            "-vcodec", "mjpeg", "pipe:1"],
+                           input=r.stdout, capture_output=True, timeout=15)
+        if c.stdout and len(c.stdout) > 2000:
+            with lock:
+                latest["jpg"], latest["t"] = c.stdout, time.time()
     except Exception as e:
-        print("screendump error:", e, flush=True)
+        print("screencap error:", e, flush=True)
+
 def run_dump_pipeline():
-    time.sleep(3); monitor("sendkey shift")  # wake screen if it slept
+    """Whenever the live stream stalls >3s, grab a real frame so the screen
+    is never stuck black (boot, GPU hiccup, stream restart)."""
+    time.sleep(3)
     while True:
-        with lock: stale = time.time() - latest["t"] > 3
-        if stale: dump_frame(); time.sleep(0.45)
-        else: time.sleep(0.5)
-KEYMAP = {187: "esc", 3: "home", 82: "menu", 67: "backspace", 66: "ret", 111: "esc"}
+        with lock:
+            stale = time.time() - latest["t"] > 3
+        if stale:
+            if time.time() - _last_wake[0] > 8:
+                _last_wake[0] = time.time()
+                adb("shell", "input", "keyevent", "224")  # wake display
+            grab_screencap()
+            time.sleep(0.5)
+        else:
+            time.sleep(0.5)
+
 PASSWORD = os.getenv("PHONE_PASSWORD", "")
 SERIAL = os.environ.get("ADB_SERIAL", "127.0.0.1:5555")
 DW, DH = 720, 1280          # device pixels (tap mapping)
@@ -82,7 +68,7 @@ def run_pipeline():
     """Keep one shared screencap pipeline alive forever, store latest JPEG."""
     while True:
         try:
-            adb("connect", SERIAL, timeout=10)
+            if ":" in SERIAL: adb("connect", SERIAL, timeout=10)
             rec = subprocess.Popen(
                 ["adb", "-s", SERIAL, "exec-out", "screenrecord",
                  "--output-format=h264", f"--size={SW}x{SH}",
@@ -241,17 +227,12 @@ class H(BaseHTTPRequestHandler):
                               {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
         if not _authed_first: return self._send(401, "login first")
         if self.path == "/tap":
-            r = adb("shell", "input", "tap", str(int(body["x"])), str(int(body["y"])))
-            if r is None or r.returncode != 0:
-                mx, my = int(body["x"]) * 32767 // DW, int(body["y"]) * 32767 // DH
-                monitor(f"mouse_move {mx} {my}"); monitor("mouse_button 1"); time.sleep(0.08); monitor("mouse_button 0")
+            adb("shell", "input", "tap", str(int(body["x"])), str(int(body["y"])))
         elif self.path == "/swipe":
             adb("shell", "input", "swipe", str(int(body["x1"])), str(int(body["y1"])),
                 str(int(body["x2"])), str(int(body["y2"])), str(int(body.get("duration", 180))))
         elif self.path == "/key":
-            r = adb("shell", "input", "keyevent", str(int(body["code"])))
-            if (r is None or r.returncode != 0) and int(body["code"]) in KEYMAP:
-                monitor("sendkey " + KEYMAP[int(body["code"])])
+            adb("shell", "input", "keyevent", str(int(body["code"])))
         elif self.path == "/text":
             text = str(body.get("text", ""))[:2000]
             if text:
