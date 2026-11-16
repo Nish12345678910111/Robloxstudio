@@ -26,9 +26,26 @@ def monitor(cmd):
         return True
     except Exception:
         return False
+_last_wake = [0.0]
+def frame_is_black(path):
+    """Sample the PPM: a sleeping/off display dumps as (near) pure black."""
+    try:
+        with open(path, "rb") as f: data = f.read()
+        i = data.find(b"\n255\n"); raw = data[i + 5:] if i >= 0 else b""
+        if len(raw) < 300: return False
+        step = max(1, len(raw) // 3000)
+        sample = raw[::step][:3000]
+        return sum(sample) / len(sample) < 7
+    except Exception:
+        return False
 def dump_frame():
     """Real screen straight from the GPU framebuffer -> JPEG. Never 'text'."""
     if not monitor(f"screendump {PPM}"): return
+    if frame_is_black(PPM) and time.time() - _last_wake[0] > 8:
+        _last_wake[0] = time.time()
+        monitor("sendkey shift"); monitor("sendkey ret")  # wake a sleeping display
+        time.sleep(0.7)
+        if not monitor(f"screendump {PPM}"): return
     try:
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", PPM,
                         "-vf", f"scale={SW}:{SH}", "-q:v", "5", JPG],
@@ -41,7 +58,7 @@ def dump_frame():
 def run_dump_pipeline():
     time.sleep(3); monitor("sendkey shift")  # wake screen if it slept
     while True:
-        with lock: stale = time.time() - latest["t"] > 5
+        with lock: stale = time.time() - latest["t"] > 3
         if stale: dump_frame(); time.sleep(0.45)
         else: time.sleep(0.5)
 KEYMAP = {187: "esc", 3: "home", 82: "menu", 67: "backspace", 66: "ret", 111: "esc"}
@@ -118,6 +135,10 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 <form id="f"><input type="password" id="pw" placeholder="Password" autocomplete="current-password"><br><br>
 <button style="width:100%">Connect →</button></form><p id="e" style="color:#ff8fab"></p></div>
 <div id="app" style="display:none">
+ <div id="wait" style="position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#070b16;z-index:5">
+ <div style="width:42px;height:42px;border-radius:50%;border:4px solid #22335e;border-top-color:#4f7cff;animation:sp .9s linear infinite"></div>
+ <p style="color:#8ea3cc">Connecting to your phone screen…</p></div>
+ <style>@keyframes sp{to{transform:rotate(360deg)}}</style>
  <div id="bar">
   <button data-k="187">◁ Back</button><button data-k="3">● Home</button><button data-k="187" id="rec" data-k2="82">▤ Apps</button>
   <button id="clip">📋 Paste my clipboard</button><button id="kbdbtn">⌨️ Keyboard</button>
@@ -127,10 +148,13 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 </div>
 <script>
 const $=s=>document.querySelector(s); let lastVal="";
-if(window.__EMBED){$('#gate').style.display='none';$('#app').style.display='block';$('#scr').src='/stream.mjpg?t='+Date.now();}
+if(window.__EMBED){startScreen();}
+function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr');
+ const boot=()=>{img.src='/stream.mjpg?t='+Date.now();}; boot(); img.onerror=()=>setTimeout(boot,2000);
+ const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg'); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
- if(r.ok){$('#gate').style.display='none';$('#app').style.display='block';$('#scr').src='/stream.mjpg?t='+Date.now();}
+ if(r.ok){startScreen();}
  else $('#e').textContent='Wrong password';};
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>post('/key',{code:+b.dataset.k}));
@@ -173,6 +197,11 @@ class H(BaseHTTPRequestHandler):
                                     "const $=s=>document.querySelector(s); window.__EMBED=1;")
                 return self._send(200, page, extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
             return self._send(200, HTML)
+        if self.path.startswith("/frame.jpg"):
+            if not authed(self): return self._send(401, "login first")
+            with lock: jpg = latest["jpg"]
+            if not jpg: return self._send(503, "no frame yet")
+            return self._send(200, jpg, "image/jpeg")
         if self.path.startswith("/stream.mjpg"):
             if not authed(self): return self._send(401, "login first")
             self.send_response(200)
