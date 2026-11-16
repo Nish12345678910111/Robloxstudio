@@ -1,8 +1,16 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 const fmt = t => t ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+async function embedUrl(p) {
+  if (!p.viewerUrl || !p.password) return p.viewerUrl || p.novncUrl;
+  try { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(p.password));
+    return p.viewerUrl + "?t=" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""); }
+  catch { return p.viewerUrl; }
+}
 function PhoneCard({ p, user, onStop, onDelete }) {
-  const screenUrl = p.viewerUrl || p.novncUrl;
+  const [frameUrl, setFrameUrl] = useState(null);
+  useEffect(() => { let on = true; embedUrl(p).then(u => { if (on) setFrameUrl(u); }); return () => { on = false; }; }, [p.viewerUrl, p.password, p.novncUrl]);
+  const screenUrl = frameUrl || p.novncUrl;
   const live = p.status === "in_progress" && screenUrl;
   const state = live ? "● LIVE" : p.status === "busy" ? "⏳ Busy — try again later" : (p.status === "starting" || p.status === "in_progress") ? "🚀 Starting…" : p.status === "queued" ? "Queued" : p.conclusion === "cancelled" ? "Stopped" : p.conclusion || p.status;
   const boxRef = useRef(null);
@@ -19,7 +27,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
     } catch {}
   }
   return (<section className="card">
-    <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android9" ? "Android 9" : "Android 11"}</h3><span className="muted">{p.phoneId}{p.runId ? ` · run #${p.runId}` : ""} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
+    <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android9" ? "Android 9" : "Android 11"}</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
       <p><b>Url -</b> {screenUrl ? <a href={screenUrl} target="_blank" rel="noreferrer">{screenUrl}</a> : "waiting for Cloudflare tunnel…"}</p>

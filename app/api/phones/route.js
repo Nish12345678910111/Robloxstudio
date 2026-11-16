@@ -43,7 +43,7 @@ export async function GET(req) {
   // Admin also sees any live phones that somehow have no DB row yet.
   if (user.role === "admin") {
     const known = new Set(rows.map(r => r.phone_id));
-    for (const p of live) if (!known.has(p.phoneId) && p.phoneId !== "…") phones.push({ ...p, owner: "unknown", runUrl: null });
+    for (const p of live) if (!known.has(p.phoneId) && p.phoneId !== "…") phones.push({ ...p, owner: "unknown" });
   }
   return NextResponse.json({ phones, totalPhones: phones.filter(p => p.status !== "busy").length,
     notice: liveOk ? null : BUSY });
