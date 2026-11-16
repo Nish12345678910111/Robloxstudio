@@ -106,7 +106,7 @@ def run_pipeline():
 HTML = """<!doctype html><html><head><meta charset=utf-8>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>NishCloudPhone</title><style>
-html,body{height:100%;overflow:hidden}body{margin:0;background:#070b16;color:#e8eefc;font-family:system-ui;text-align:center}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}body{margin:0;background:#070b16;color:#e8eefc;font-family:system-ui;text-align:center}
 #gate{margin:18vh auto;max-width:320px;background:#0d1528;padding:28px;border-radius:20px;border:1px solid #1d2b4d}
 input,button{padding:12px;border-radius:12px;border:1px solid #2a3a63;background:#0a1122;color:#fff;font-size:16px}
 button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor:pointer}
@@ -137,6 +137,8 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 const $=s=>document.querySelector(s); let lastVal="";
 if(window.__EMBED){startScreen();}
 function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr'); const k=window.__TOK||'';
+ if(window.__FB){ // fallback screen: snapshot polling - works even if the live stream is stuck
+   const tick=()=>{const i=new Image(); i.onload=()=>{img.src=i.src;$('#wait').style.display='none'; setTimeout(tick,450);}; i.onerror=()=>setTimeout(tick,1200); i.src='/frame.jpg?t='+k+'&x='+Date.now();}; tick(); return;}
  const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; boot(); img.onerror=()=>setTimeout(boot,2000);
  const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
@@ -150,9 +152,12 @@ $('#kbdbtn').onclick=()=>{lastVal='';$('#kbd').value='';$('#kbd').focus();};
 $('#kbd').addEventListener('input',e=>{const v=e.target.value; if(v.length>lastVal.length) post('/text',{text:v.slice(lastVal.length)}); else if(v.length<lastVal.length) post('/key',{code:67}); lastVal=v;});
 $('#tgl').onclick=()=>{const b=$('#bar'),h=b.classList.toggle('hide');$('#tgl').textContent=h?'⌃':'⌄';};
 let down=null; const img=$('#scr');
-const pos=e=>{const r=img.getBoundingClientRect();return{x:Math.round((e.clientX-r.left)/r.width*540),y:Math.round((e.clientY-r.top)/r.height*960)}};
-img.addEventListener('pointerdown',e=>{down=pos(e);img.setPointerCapture(e.pointerId)});
-img.addEventListener('pointerup',e=>{if(!down)return;const u=pos(e);
+const pos=e=>{const r=img.getBoundingClientRect(),ia=432/768,ea=r.width/r.height;let w,h,x0,y0;
+ if(ea>ia){h=r.height;w=h*ia;x0=r.left+(r.width-w)/2;y0=r.top;}else{w=r.width;h=w/ia;x0=r.left;y0=r.top+(r.height-h)/2;}
+ const cx=Math.min(Math.max(e.clientX-x0,0),w),cy=Math.min(Math.max(e.clientY-y0,0),h);
+ return{x:Math.round(cx/w*540),y:Math.round(cy/h*960)}};
+img.addEventListener('pointerdown',e=>{e.preventDefault();down=pos(e);try{img.setPointerCapture(e.pointerId)}catch(_){}});
+img.addEventListener('pointerup',e=>{e.preventDefault();if(!down)return;const u=pos(e);
  if(Math.abs(u.x-down.x)<12&&Math.abs(u.y-down.y)<12) post('/tap',down); else post('/swipe',{x1:down.x,y1:down.y,x2:u.x,y2:u.y,duration:180}); down=null;});
 img.addEventListener('contextmenu',e=>e.preventDefault());
 </script></body></html>"""
@@ -183,6 +188,16 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def do_GET(self):
+        if self.path.startswith("/fallback"):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            page = HTML.replace("const $=s=>document.querySelector(s);",
+                                "const $=s=>document.querySelector(s); window.__FB=1;")
+            if (qs.get("t") or [""])[0] == TOKEN and TOKEN:
+                page = page.replace("const $=s=>document.querySelector(s);",
+                                    "const $=s=>document.querySelector(s); window.__EMBED=1; window.__TOK='" + TOKEN + "';")
+                return self._send(200, page, extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
+            return self._send(200, page)
         if self.path in ("/", "/index.html") or self.path.startswith("/?") or self.path.startswith("/index.html?"):
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)
