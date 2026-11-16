@@ -106,7 +106,7 @@ def run_pipeline():
 HTML = """<!doctype html><html><head><meta charset=utf-8>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>NishCloudPhone</title><style>
-body{margin:0;background:#070b16;color:#e8eefc;font-family:system-ui;text-align:center}
+html,body{height:100%;overflow:hidden}body{margin:0;background:#070b16;color:#e8eefc;font-family:system-ui;text-align:center}
 #gate{margin:18vh auto;max-width:320px;background:#0d1528;padding:28px;border-radius:20px;border:1px solid #1d2b4d}
 input,button{padding:12px;border-radius:12px;border:1px solid #2a3a63;background:#0a1122;color:#fff;font-size:16px}
 button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor:pointer}
@@ -115,7 +115,7 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 #bar::-webkit-scrollbar{display:none}
 #bar button{background:transparent;border:0;font-size:12px;padding:8px 9px;white-space:nowrap;border-radius:999px;flex:none}
 #tgl{position:fixed;right:10px;bottom:10px;z-index:10;width:42px;height:42px;border-radius:50%;background:rgba(10,16,32,.9);border:1px solid #2a3a63;font-size:19px;line-height:1}
-#scr{width:100vw;height:100dvh;object-fit:contain;touch-action:none;background:#000;display:block}
+#scr{position:fixed;inset:0;width:100%;height:100%;object-fit:contain;touch-action:none;background:#000;display:block}
 #kbd{position:absolute;opacity:0;pointer-events:none}
 </style></head><body>
 <div id="gate"><h2>☁️📱 NishCloudPhone</h2><p>Enter the phone password</p>
