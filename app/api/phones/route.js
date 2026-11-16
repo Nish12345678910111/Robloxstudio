@@ -24,7 +24,8 @@ export async function GET(req) {
   // the admin sees all. Nothing here exposes the repo to ordinary users.
   let live = [], liveOk = true;
   if (tokenConfigured()) {
-    try { live = await listPhones(); } catch { liveOk = false; }
+    try { live = await listPhones(); }
+    catch { await new Promise(r => setTimeout(r, 600)); try { live = await listPhones(true); } catch { liveOk = false; } }
   }
   const byId = new Map(live.map(p => [p.phoneId, p]));
   // AUTO-CLEAN: a phone whose run has STOPPED (completed) but was never
