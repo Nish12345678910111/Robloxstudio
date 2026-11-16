@@ -142,7 +142,7 @@ export default function Dashboard({ user, tokenReady }) {
       <button className="ghost wide" onClick={logout}>Log out</button>
       <button className="danger wide" onClick={delAccount}>🗑 Delete my account</button>
       {health && <div className="health"><b>🔌 Connection</b>
-        <span>Database: {health.db ? "🟢 connected" : "🔴 not connected"}</span>
+        <span>Database: {health.db ? "🟢 connected" : `🔴 not connected${health.dbCode ? ` (${health.dbCode})` : ""}`}</span>
         {(health.keys || []).filter(k => k.configured).map(k => <span key={k.name}>{k.name}: {k.active ? "🟢 you are connected here" : k.ok ? "🟢 working" : "🟠 full"}</span>)}
       </div>}
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
