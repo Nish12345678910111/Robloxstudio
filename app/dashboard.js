@@ -50,9 +50,9 @@ function PhoneCard({ p, user, onStop, onDelete }) {
   </section>);
 }
 export default function Dashboard({ user, tokenReady }) {
-  const [phones, setPhones] = useState([]), [msg, setMsg] = useState(""), [creating, setCreating] = useState(false);
+  const [phones, setPhones] = useState([]), [msg, setMsg] = useState(""), [notice, setNotice] = useState(null), [creating, setCreating] = useState(false);
   const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem("ncp_hidden") || "[]")); } catch { return new Set(); } });
-  const load = useCallback(async () => { const r = await fetch("/api/phones"); if (r.ok) { const d = await r.json(); setPhones(d.phones || []); if (d.notice) setMsg(d.notice); } }, []);
+  const load = useCallback(async () => { const r = await fetch("/api/phones"); if (r.ok) { const d = await r.json(); setPhones(d.phones || []); setNotice(d.notice || null); } }, []);
   useEffect(() => { load(); const i = setInterval(load, 8000); return () => clearInterval(i); }, [load]);
   async function create() {
     if (creating) return;
@@ -128,6 +128,7 @@ export default function Dashboard({ user, tokenReady }) {
     <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 · auto WiFi · straight to home screen</p></div>
       </header>
     {!tokenReady && <p className="warn">⏳ Cloud phones are busy right now — Many users are using free cloud phones, try again later.</p>}
+    {notice && <p className="warn">⏳ {notice}</p>}
     {msg && <p className="msg">{msg}</p>}
     <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
     {visible.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate cloud phone, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
