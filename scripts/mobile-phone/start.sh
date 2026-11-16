@@ -75,6 +75,93 @@ if [ "${#VNC_PASSWORD}" -gt 8 ]; then
 fi
 export VNC_PASSWORD
 
+# ---------------- Android 11: official Android Emulator (hardware accel) ----
+# Instead of booting an ISO in a generic VM, Android 11 phones now run in the
+# official Android Emulator: ADB is native (screen capture + touch always
+# work), WiFi is built in, and the home launcher is the real phone launcher.
+if [ "$EDITION" = "android11" ] && [ "${USE_EMULATOR:-1}" = "1" ]; then
+  echo ">>> Starting Android 11 phone..."
+  SDK="$WORKDIR_PHONE/sdk"; AVD_HOME_DIR="$WORKDIR_PHONE/avd"
+  mkdir -p "$SDK" "$AVD_HOME_DIR"
+  export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
+  if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+    curl -fL --retry 5 --retry-delay 5 -o /tmp/cmdtools.zip \
+      https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+    rm -rf "$SDK/cmdline-tools"; mkdir -p "$SDK/cmdline-tools"
+    unzip -q -o /tmp/cmdtools.zip -d "$SDK/cmdline-tools"
+    mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+  fi
+  export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
+  yes | sdkmanager --licenses >/dev/null 2>&1 || true
+  [ -x "$SDK/emulator/emulator" ] || sdkmanager "emulator" "platform-tools" >/dev/null
+  IMG_PKG="system-images;android-30;google_apis;x86_64"
+  [ -d "$SDK/system-images/android-30/google_apis/x86_64" ] || sdkmanager "$IMG_PKG" >/dev/null
+  if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
+    echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
+      || echo no | avdmanager create avd -n phone -k "$IMG_PKG" --force >/dev/null
+    CFG="$AVD_HOME_DIR/phone.avd/config.ini"
+    sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=720/; s/^hw.lcd.height=.*/hw.lcd.height=1280/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
+  fi
+  nohup "$SDK/emulator/emulator" -avd phone -no-window -no-audio -no-boot-anim \
+    -gpu swiftshader_indirect -accel on -memory 8192 -cores 4 -partition-size 32768 \
+    -port 5554 -no-snapshot -wipe-data > emulator.log 2>&1 &
+  echo $! > emulator.pid
+  SERIAL="emulator-5554"
+  adb start-server >/dev/null 2>&1 || true
+  for _ in $(seq 1 120); do
+    BOOTED="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+    [ "$BOOTED" = "1" ] && break; sleep 5
+  done
+  (
+    S="adb -s $SERIAL shell"
+    $S settings put global device_provisioned 1 >/dev/null 2>&1 || true
+    $S settings put secure user_setup_complete 1 >/dev/null 2>&1 || true
+    $S settings put global setup_wizard_has_run 1 >/dev/null 2>&1 || true
+    for pkg in com.google.android.setupwizard com.android.setupwizard; do
+      $S pm disable-user --user 0 "$pkg" >/dev/null 2>&1 || true
+    done
+    $S wm size 720x1280 >/dev/null 2>&1 || true
+    $S wm density 320 >/dev/null 2>&1 || true
+    $S settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+    $S settings put system screen_off_timeout 2147483647 >/dev/null 2>&1 || true
+    $S svc power stayon true >/dev/null 2>&1 || true
+    $S input keyevent 224 >/dev/null 2>&1 || true
+    $S settings put global wifi_on 1 >/dev/null 2>&1 || true
+    $S svc wifi enable >/dev/null 2>&1 || true
+    HOME_COMP="$($S cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null | tr -d '\r' | tail -n1 || true)"
+    [ -n "$HOME_COMP" ] && $S cmd package set-home-activity "$HOME_COMP" >/dev/null 2>&1 || true
+    $S wm dismiss-keyguard >/dev/null 2>&1 || true
+    $S input keyevent 3 >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5 6; do sleep 30; $S input keyevent 224 >/dev/null 2>&1 || true; $S svc wifi enable >/dev/null 2>&1 || true; done
+  ) > setup-skip.log 2>&1 &
+  # live screen + controls (ADB native here, so capture/touch are reliable)
+  PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 ADB_SERIAL="$SERIAL" \
+    python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" > viewer.log 2>&1 &
+  echo $! > viewer.pid
+  sleep 2
+  : > cloudflared-viewer.log
+  cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:8081" > cloudflared-viewer.log 2>&1 &
+  echo $! > cloudflared-viewer.pid
+  VIEWER_URL=""
+  for _ in $(seq 1 45); do
+    VIEWER_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-viewer.log | head -n1 || true)"
+    [ -n "$VIEWER_URL" ] && break; sleep 2
+  done
+  TUNNEL_URL="$VIEWER_URL"
+  if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
+    VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+      python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
+  fi
+  echo "Cloud phone created."
+  if [ "${START_ONLY:-0}" = "1" ]; then exit 0; fi
+  DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    kill -0 "$(cat emulator.pid)" 2>/dev/null || { echo "phone stopped"; exit 1; }
+    sleep 30
+  done
+  exit 0
+fi
+
 # ------------------------------------------------------------------- ISO -----
 ISO_FILE="$WORKDIR_PHONE/$ISO_BASENAME"
 if [ ! -s "$ISO_FILE" ]; then
