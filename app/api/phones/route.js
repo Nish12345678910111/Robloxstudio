@@ -28,14 +28,15 @@ export async function GET(req) {
     catch { await new Promise(r => setTimeout(r, 600)); try { live = await listPhones(true); } catch { liveOk = false; } }
   }
   const byId = new Map(live.map(p => [p.phoneId, p]));
-  // AUTO-CLEAN: a phone whose run has STOPPED (completed) but was never
-  // deleted gets removed everywhere - the run is deleted upstream and its
-  // row is deleted from the same phones table. No graveyard rows, no clutter.
+  // AUTO-CLEAN (1-day rule): stopping a phone never deletes it. Only a
+  // phone that is finished AND at least 1 day old is removed everywhere -
+  // run deleted upstream and row deleted from the same phones table.
   if (liveOk) {
     let cleaned = 0;
     for (const r of [...rows]) {
       const gh = byId.get(r.phone_id);
-      if (gh && gh.status === "completed" && cleaned < 5) {
+      const ageMs = Date.now() - new Date(r.created_at).getTime();
+      if (gh && gh.status === "completed" && ageMs > 24 * 3600 * 1000 && cleaned < 5) {
         cleaned++;
         try { await deleteRun(gh.runId); } catch {}
         await deletePhoneRow(r.phone_id).catch(() => {});

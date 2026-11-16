@@ -70,7 +70,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils \
+            qemu-system-x86 qemu-utils openjdk-17-jre-headless unzip \
             novnc websockify \
             socat curl ca-certificates adb xorriso cpio aria2 ffmpeg
           python3 -m pip install -q pg8000 || true
@@ -102,6 +102,14 @@ jobs:
             .phone-vm/bliss11-phone2.iso
           key: cloud-phone-android-x86-iso-v2
 
+      - name: Cache Android Emulator (SDK + phone image)
+        uses: actions/cache@v4
+        with:
+          path: |
+            .phone-vm/sdk
+            .phone-vm/avd
+          key: cloud-phone-emulator-v1
+
       - name: Cache Bliss OS Android 11 ISO
         uses: actions/cache@v4
         with:
@@ -123,6 +131,15 @@ jobs:
         run: |
           chmod +x scripts/mobile-phone/start.sh
           ./scripts/mobile-phone/start.sh
+
+      - name: Save Android Emulator to cache NOW
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .phone-vm/sdk
+            .phone-vm/avd
+          key: cloud-phone-emulator-v1
 
       - name: Save Android ISO to cache NOW (not at job end)
         continue-on-error: true

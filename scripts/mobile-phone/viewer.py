@@ -149,14 +149,14 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 <script>
 const $=s=>document.querySelector(s); let lastVal="";
 if(window.__EMBED){startScreen();}
-function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr');
- const boot=()=>{img.src='/stream.mjpg?t='+Date.now();}; boot(); img.onerror=()=>setTimeout(boot,2000);
- const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg'); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
+function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr'); const k=window.__TOK||'';
+ const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; boot(); img.onerror=()=>setTimeout(boot,2000);
+ const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
  if(r.ok){startScreen();}
  else $('#e').textContent='Wrong password';};
-const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
+const post=(u,b)=>fetch(u+'?t='+(window.__TOK||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>post('/key',{code:+b.dataset.k}));
 $('#clip').onclick=async()=>{try{const t=await navigator.clipboard.readText(); if(t) post('/text',{text:t});}catch(e){alert('Clipboard blocked - tap Keyboard and paste there');$('#kbd').focus();}};
 $('#kbdbtn').onclick=()=>{lastVal='';$('#kbd').value='';$('#kbd').focus();};
@@ -174,7 +174,14 @@ def authed(h):
     if not PASSWORD:
         return True
     cookie = h.headers.get("Cookie", "")
-    return f"ncp_view={TOKEN}" in cookie
+    if f"ncp_view={TOKEN}" in cookie:
+        return True
+    try:
+        from urllib.parse import urlparse, parse_qs
+        t = (parse_qs(urlparse(h.path).query).get("t") or [""])[0]
+        return bool(t) and hmac.compare_digest(t, TOKEN)
+    except Exception:
+        return False
 
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -194,8 +201,8 @@ class H(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             if (qs.get("t") or [""])[0] == TOKEN and TOKEN:
                 page = HTML.replace("const $=s=>document.querySelector(s);",
-                                    "const $=s=>document.querySelector(s); window.__EMBED=1;")
-                return self._send(200, page, extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
+                                    "const $=s=>document.querySelector(s); window.__EMBED=1; window.__TOK='" + TOKEN + "';")
+                return self._send(200, page, extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
             return self._send(200, HTML)
         if self.path.startswith("/frame.jpg"):
             if not authed(self): return self._send(401, "login first")
@@ -221,6 +228,9 @@ class H(BaseHTTPRequestHandler):
                 return
         return self._send(404, "not found")
     def do_POST(self):
+        from urllib.parse import urlparse
+        _authed_first = authed(self)  # token rides in the query - check BEFORE stripping it
+        self.path = urlparse(self.path).path
         n = int(self.headers.get("Content-Length", 0))
         try: body = json.loads(self.rfile.read(n) or b"{}")
         except Exception: body = {}
@@ -229,7 +239,7 @@ class H(BaseHTTPRequestHandler):
             if not ok: return self._send(401, json.dumps({"error": "wrong password"}), "application/json")
             return self._send(200, "{}", "application/json",
                               {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
-        if not authed(self): return self._send(401, "login first")
+        if not _authed_first: return self._send(401, "login first")
         if self.path == "/tap":
             r = adb("shell", "input", "tap", str(int(body["x"])), str(int(body["y"])))
             if r is None or r.returncode != 0:
