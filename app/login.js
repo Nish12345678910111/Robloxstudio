@@ -1,9 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 export default function Login({ configured }) {
   const [mode, setMode] = useState("login");
   const [name, setName] = useState(""), [username, setUsername] = useState(""), [pw, setPw] = useState("");
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const [vpn, setVpn] = useState(false);
+  useEffect(() => { fetch("/api/me").then(async r => { const d = await r.json().catch(() => ({}));
+    if (d.vpn) { setVpn(true); setErr(d.error); } }).catch(() => {}); }, []);
   async function go(e) { e.preventDefault(); setBusy(true); setErr("");
     const r = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(mode === "register" ? { mode, name, username, password: pw } : { mode, username, password: pw }) });
@@ -16,8 +19,8 @@ export default function Login({ configured }) {
     {mode === "register" && <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" autoComplete="name" />}
     <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" autoComplete="username" autoFocus={mode === "login"} />
     <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Password (min 8 characters)" autoComplete={mode === "register" ? "new-password" : "current-password"} />
-    {err && <p className="err">{err}</p>}
-    <button disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account →" : "Login →"}</button>
+    {err && <p className="err">{err}</p>}{vpn && <p className="warn">🚫 This page is disabled while a VPN / proxy is on. Turn it off and reload.</p>}
+    <button disabled={busy || vpn}>{busy ? "Please wait…" : mode === "register" ? "Create account →" : "Login →"}</button>
     <p className="switch">{mode === "register"
       ? <>Already have an account? <a href="#" onClick={e => { e.preventDefault(); setMode("login"); setErr(""); }}>Login</a></>
       : <>New here? <a href="#" onClick={e => { e.preventDefault(); setMode("register"); setErr(""); }}>Create account</a></>}</p>

@@ -13,6 +13,37 @@ import hashlib, hmac, json, os, subprocess, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("VIEWER_PORT", "8081"))
+MONITOR = os.getenv("QEMU_MONITOR", "")
+PPM, JPG = "/tmp/ncp-frame.ppm", "/tmp/ncp-frame.jpg"
+import socket as _socket
+def monitor(cmd):
+    """QEMU human-monitor over its unix socket (works even when ADB is dead)."""
+    if not MONITOR: return False
+    try:
+        c = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM); c.settimeout(4)
+        c.connect(MONITOR); c.recv(4096)
+        c.sendall((cmd + "\n").encode()); time.sleep(0.15); c.recv(4096); c.close()
+        return True
+    except Exception:
+        return False
+def dump_frame():
+    """Real screen straight from the GPU framebuffer -> JPEG. Never 'text'."""
+    if not monitor(f"screendump {PPM}"): return
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", PPM,
+                        "-vf", f"scale={SW}:{SH}", "-q:v", "5", JPG],
+                       timeout=10, capture_output=True)
+        with open(JPG, "rb") as f: data = f.read()
+        if len(data) > 2000:
+            with lock: latest["jpg"], latest["t"] = data, time.time()
+    except Exception as e:
+        print("screendump error:", e, flush=True)
+def run_dump_pipeline():
+    while True:
+        with lock: stale = time.time() - latest["t"] > 5
+        if stale: dump_frame(); time.sleep(0.45)
+        else: time.sleep(0.5)
+KEYMAP = {187: "esc", 3: "home", 82: "menu", 67: "backspace", 66: "ret", 111: "esc"}
 PASSWORD = os.getenv("PHONE_PASSWORD", "")
 SERIAL = os.environ.get("ADB_SERIAL", "127.0.0.1:5555")
 DW, DH = 720, 1280          # device pixels (tap mapping)
@@ -159,12 +190,17 @@ class H(BaseHTTPRequestHandler):
                               {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
         if not authed(self): return self._send(401, "login first")
         if self.path == "/tap":
-            adb("shell", "input", "tap", str(int(body["x"])), str(int(body["y"])))
+            r = adb("shell", "input", "tap", str(int(body["x"])), str(int(body["y"])))
+            if r is None or r.returncode != 0:
+                mx, my = int(body["x"]) * 32767 // DW, int(body["y"]) * 32767 // DH
+                monitor(f"mouse_move {mx} {my}"); monitor("mouse_button 1"); time.sleep(0.08); monitor("mouse_button 0")
         elif self.path == "/swipe":
             adb("shell", "input", "swipe", str(int(body["x1"])), str(int(body["y1"])),
                 str(int(body["x2"])), str(int(body["y2"])), str(int(body.get("duration", 180))))
         elif self.path == "/key":
-            adb("shell", "input", "keyevent", str(int(body["code"])))
+            r = adb("shell", "input", "keyevent", str(int(body["code"])))
+            if (r is None or r.returncode != 0) and int(body["code"]) in KEYMAP:
+                monitor("sendkey " + KEYMAP[int(body["code"])])
         elif self.path == "/text":
             text = str(body.get("text", ""))[:2000]
             if text:
@@ -181,5 +217,6 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=run_pipeline, daemon=True).start()
+    threading.Thread(target=run_dump_pipeline, daemon=True).start()
     print(f"viewer on :{PORT} device={DW}x{DH} stream={SW}x{SH}", flush=True)
     ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

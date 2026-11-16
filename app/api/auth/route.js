@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { makeSession, COOKIE } from "../../../lib/auth";
-import { dbConfigured, ensureSchema, createUser, findUser, verifyPassword, touchLogin } from "../../../lib/db";
+import { dbConfigured, ensureSchema, createUser, findUser, verifyPassword, touchLogin, recentSignupFromIp, saveSignupIp, saveLastIp } from "../../../lib/db";
+import { clientIp, vpnBlocked, VPN_MSG } from "../../../lib/netguard";
 
 const BUSY = "Many users are using free cloud phones, try again later.";
 const clean = (v, max) => String(v || "").trim().slice(0, max);
@@ -18,7 +19,8 @@ export async function POST(req) {
   if (!dbConfigured()) return NextResponse.json({ error: "Database is not connected yet. Set AIVEN_DATABASE_URL in Vercel env vars, then redeploy." }, { status: 503 });
   const body = await req.json().catch(() => ({}));
   const mode = body.mode === "register" ? "register" : "login";
-  const ip = (req.headers.get("x-forwarded-for") || "local").split(",")[0];
+  const ip = clientIp(req);
+  if (await vpnBlocked(ip)) return NextResponse.json({ error: VPN_MSG, vpn: true }, { status: 403 });
   try { await ensureSchema(); } catch { return NextResponse.json({ error: BUSY }, { status: 503 }); }
   try {
     if (mode === "register") {
@@ -28,7 +30,10 @@ export async function POST(req) {
       if (password.length < 8) return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
       if (username.toLowerCase() === "admin") return NextResponse.json({ error: "That username is reserved." }, { status: 400 });
       if (await findUser(username)) return NextResponse.json({ error: "That username is already taken. Try another one." }, { status: 409 });
+      const recent = await recentSignupFromIp(ip).catch(() => null);
+      if (recent) return NextResponse.json({ error: "An account was already created from this network in the last 30 days. Please login to that account instead." }, { status: 409 });
       const user = await createUser(name, username, password);
+      saveSignupIp(user.id, ip).catch(() => {});
       return sessionResponse(user);
     }
     // login
@@ -39,6 +44,7 @@ export async function POST(req) {
     if (!user || !verifyPassword(password, user.password_hash))
       return NextResponse.json({ error: "Wrong username or password." }, { status: 401 });
     touchLogin(user.id).catch(() => {});
+    saveLastIp(user.id, ip).catch(() => {});
     return sessionResponse(user);
   } catch { return NextResponse.json({ error: BUSY }, { status: 503 }); }
 }

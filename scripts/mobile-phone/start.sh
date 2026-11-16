@@ -279,8 +279,16 @@ if command -v adb >/dev/null 2>&1; then
     $S settings put global wifi_networks_available_notification_enabled 0 >/dev/null 2>&1 || true
     $S svc wifi enable >/dev/null 2>&1 || true
     $S cmd wifi set-wifi-enabled enabled >/dev/null 2>&1 || true
-    $S cmd wifi connect-network VirtWiFi open >/dev/null 2>&1 || true
-    # Land on the launcher home screen.
+    for ssid in VirtWifi VirtWiFi virt-wifi; do
+      $S cmd wifi connect-network "$ssid" open >/dev/null 2>&1 || true
+      $S cmd wifi add-network "$ssid" open >/dev/null 2>&1 || true
+    done
+    # Set the HOME launcher as default and land on it, unlocked.
+    HOME_COMP="$($S cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null | tr -d '\r' | tail -n1 || true)"
+    [ -n "$HOME_COMP" ] && $S cmd package set-home-activity "$HOME_COMP" >/dev/null 2>&1 || true
+    [ -n "$HOME_COMP" ] && $S pm set-home-activity "$HOME_COMP" >/dev/null 2>&1 || true
+    $S wm dismiss-keyguard >/dev/null 2>&1 || true
+    $S input keyevent 82 >/dev/null 2>&1 || true
     $S input keyevent 3 >/dev/null 2>&1 || true
     $S am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
     echo "setup-skipper: done $(date -u +%FT%TZ)"
@@ -334,7 +342,7 @@ fi
 VIEWER_URL=""
 if [ -f "$REPO_ROOT/scripts/mobile-phone/viewer.py" ] && command -v ffmpeg >/dev/null 2>&1; then
   echo ">>> Starting own fast viewer on 127.0.0.1:8081 ..."
-  PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" > viewer.log 2>&1 &
+  PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 QEMU_MONITOR="${WORKDIR_PHONE}/qemu-monitor.sock" python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" > viewer.log 2>&1 &
   echo $! > viewer.pid
   sleep 2
   : > cloudflared-viewer.log
@@ -345,71 +353,35 @@ if [ -f "$REPO_ROOT/scripts/mobile-phone/viewer.py" ] && command -v ffmpeg >/dev
     [ -n "$VIEWER_URL" ] && break
     sleep 2
   done
-  echo ">>> Viewer URL: ${VIEWER_URL:-FAILED (noVNC fallback still works)}"
+  echo ">>> Viewer ready"
 else
   echo "::warning::viewer.py/ffmpeg missing - dashboard will use noVNC fallback"
 fi
 
-# ------------------------------------------------------- report phone info ---
-# Used by the NishCloudPhone dashboard: it downloads this file as a GitHub
-# Actions artifact (auth-only, never committed to this PUBLIC repo) to learn
-# the tunnel URL + password for this phone.
-PHONE_INFO_FILE="${PHONE_INFO_FILE:-$WORKDIR_PHONE/cloud-phone-info.json}"
-mkdir -p "$(dirname "$PHONE_INFO_FILE")"
-cat > "$PHONE_INFO_FILE" <<EOF
-{"phoneId":"${PHONE_ID:-manual}","edition":"${EDITION}","tunnelUrl":"${TUNNEL_URL}","novncUrl":"${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale&quality=5&compression=8","viewerUrl":"${VIEWER_URL}","password":"${VNC_PASSWORD}","startedAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
-EOF
-echo ">>> Phone info written to $PHONE_INFO_FILE"
+# ------------------------------------------------------- save phone access --
+# The phone's URL + password are stored ONLY in the owner's account row
+# (small text fields). Nothing credential-like is printed or uploaded here.
+if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
+  VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+    python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
+fi
+echo "Cloud phone created."
 
 # ----------------------------------------------------------------- banner ----
 banner() {
   cat <<EOF
 
 ====================================================================
-  📱  YOUR MOBILE PHONE IS LIVE
-====================================================================
-  Fast viewer    : ${VIEWER_URL:-unavailable - use noVNC URL}
-  Cloudflare URL : ${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale
-  VNC Password   : ${VNC_PASSWORD}
-
-  1. Open the Cloudflare URL above in any browser (phone or PC)
-  2. Click "Connect"
-  3. Type the VNC password when noVNC asks for it
-  4. Mouse click/drag = touch. First boot can take 2-5 minutes
-     (pick "Live CD" again if you ever see the boot menu)
-
-  ADB (inside the runner only):  adb connect 127.0.0.1:5555
-  Session length: ${SESSION_MINUTES} minutes - cancel the workflow
-  run (Actions tab -> this run -> Cancel) to stop the phone early.
+  Cloud phone created.
+  Open your NishCloudPhone dashboard to use it.
 ====================================================================
 
 EOF
 }
 banner
 
-# Also publish to the GitHub Actions run summary when running in CI.
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  {
-    echo "## 📱 Mobile Phone (QEMU + noVNC)"
-    echo ""
-    echo "| | |"
-    echo "|---|---|"
-    echo "| **Cloudflare URL** | ${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale |"
-    echo "| **VNC password** | \`${VNC_PASSWORD}\` |"
-    echo ""
-    echo "Open the URL, click **Connect**, enter the password. Mouse = touch."
-  } >> "$GITHUB_STEP_SUMMARY"
-fi
-if [ -n "${GITHUB_ENV:-}" ]; then
-  {
-    echo "TUNNEL_URL=${TUNNEL_URL}"
-    echo "VNC_PASSWORD=${VNC_PASSWORD}"
-  } >> "$GITHUB_ENV"
-fi
-
 # --------------------------------------------------------------- keep alive --
-# Dashboard mode: the workflow uploads $PHONE_INFO_FILE as an artifact in the
-# next step, then runs its own keep-alive step. Our background daemons
+# Dashboard mode: the next step runs its own keep-alive. Our background daemons
 # (QEMU -daemonize, websockify, cloudflared) survive across steps.
 if [ "${START_ONLY:-0}" = "1" ]; then
   echo ">>> START_ONLY=1 - leaving phone running in background, exiting starter."
@@ -430,7 +402,6 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
     tail -n 50 websockify.log cloudflared.log || true
     exit 1
   fi
-  # Re-print every 5 min so the URL/password are easy to find in live logs.
   banner
   sleep 300
 done
