@@ -69,9 +69,9 @@ export default function Dashboard({ user, tokenReady }) {
       setPhones(ps => [{ phoneId: d.phoneId, runId: null, edition: "android11", owner: user.username,
         status: d.state === "busy" ? "busy" : "starting", createdAt: new Date().toISOString(),
         viewerUrl: null, novncUrl: null, password: null }, ...ps]);
-      setMsg(d.state === "busy" ? "Many users are using free cloud phones, try again later." : "✅ Cloud phone created — it is starting, the screen will appear here.");
+      if (d.state === "busy") setNotice("Many users are using free cloud phones, try again later."); else setMsg("✅ Cloud phone created — it is starting, the screen will appear here.");
       load();
-    } else setMsg(d.error || "Many users are using free cloud phones, try again later.");
+    } else setNotice(d.error || "Many users are using free cloud phones, try again later.");
     setCreating(false);
   }
   async function stop(id) { await fetch(`/api/phones/${id}/stop`, { method: "POST" }); setMsg("Stopping cloud phone…"); load(); }
@@ -88,7 +88,7 @@ export default function Dashboard({ user, tokenReady }) {
         const r = await fetch(`/api/phones/${p.runId}/delete`, { method: "DELETE" });
         const d = await r.json();
         if (d.deleted) { setMsg("Cloud phone deleted."); load(); return; }
-        if (!r.ok && r.status !== 202) { setMsg(d.error || "Many users are using free cloud phones, try again later."); load(); return; }
+        if (!r.ok && r.status !== 202) { setNotice(d.error || "Many users are using free cloud phones, try again later."); load(); return; }
       } catch {}
       await new Promise(res => setTimeout(res, 4000));
     }
@@ -125,7 +125,7 @@ export default function Dashboard({ user, tokenReady }) {
       <button className="danger wide" onClick={delAccount}>🗑 Delete my account</button>
       {health && <div className="health"><b>🔌 Connection</b>
         <span>Database: {health.db ? "🟢 connected" : "🔴 not connected"}</span>
-        {(health.keys || []).filter(k => k.configured).map(k => <span key={k.name}>{k.name}: {k.ok ? "🟢 working" : "🔴 not working"}</span>)}
+        {(health.keys || []).filter(k => k.configured).map(k => <span key={k.name}>{k.name}: {k.active ? "🟢 you are connected here" : k.ok ? "🟢 working" : "🟠 full"}</span>)}
       </div>}
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
     </aside>
