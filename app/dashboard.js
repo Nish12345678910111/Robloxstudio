@@ -34,7 +34,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
     <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android9" ? "Android 9" : "Android 11"}</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
-      <p><b>Url -</b> {p.viewerUrl || p.novncUrl ? <a href={p.viewerUrl || p.novncUrl} target="_blank" rel="noreferrer">{p.viewerUrl || p.novncUrl}</a> : "waiting for Cloudflare tunnel…"}</p>
+      <p><b>Url -</b> {p.viewerUrl || p.novncUrl ? <a href={p.viewerUrl || p.novncUrl} target="_blank" rel="noreferrer">{p.viewerUrl || p.novncUrl}</a> : "waiting for connection…"}</p>
       <p><b>Password -</b> {p.password ? <code>{p.password}</code> : "•••••••• (appears when initialized)"}</p>
     </div>
     <div className="phoneWrap" ref={boxRef}>

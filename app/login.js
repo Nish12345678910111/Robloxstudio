@@ -16,7 +16,7 @@ export default function Login({ configured }) {
   return (<main className="loginWrap"><form className="loginCard" onSubmit={go}>
     <div className="logo">☁️📱</div><h1>NishCloudPhone</h1>
     <p className="muted">{mode === "register" ? "Create your free account" : "Welcome back — login to your cloud phones"}</p>
-    {!configured && <p className="warn">Database setup needed: add <b>AIVEN_DATABASE_URL</b> in Vercel env vars, then redeploy.</p>}
+    {!configured && <p className="warn">Service setup is in progress — please try again shortly.</p>}
     {mode === "register" && <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" autoComplete="name" />}
     <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" autoComplete="username" autoFocus={mode === "login"} />
     <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Password (min 8 characters)" autoComplete={mode === "register" ? "new-password" : "current-password"} />
