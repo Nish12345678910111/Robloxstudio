@@ -93,3 +93,5 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
   .card{padding:10px}
   .phoneBox{max-width:100%;border-radius:12px}
 }
+.health{display:flex;flex-direction:column;gap:5px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;font-size:12.5px}
+.health b{font-size:13px}.health span{color:var(--mut)}
