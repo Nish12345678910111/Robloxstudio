@@ -162,8 +162,11 @@ if [ "$EDITION" = "android11" ] && [ "${USE_EMULATOR:-1}" = "1" ]; then
   TUNNEL_URL="$VIEWER_URL"
   SAVED=0
   if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
-    VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
-      python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && SAVED=1 || SAVED=0
+    for _try in 1 2 3; do
+      VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+        python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && { SAVED=1; break; }
+      sleep 10
+    done
   fi
   if [ "$SAVED" != "1" ]; then
     # Private backup channel (token-only access, never printed) so the
@@ -481,8 +484,11 @@ fi
 # (small text fields). Nothing credential-like is printed or uploaded here.
   SAVED=0
   if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
-    VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
-      python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && SAVED=1 || SAVED=0
+    for _try in 1 2 3; do
+      VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+        python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && { SAVED=1; break; }
+      sleep 10
+    done
   fi
   if [ "$SAVED" != "1" ]; then
     # Private backup channel (token-only access, never printed) so the
