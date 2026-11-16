@@ -91,15 +91,17 @@ export default function Dashboard({ user, tokenReady }) {
   async function stop(id) { await fetch(`/api/phones/${id}/stop`, { method: "POST" }); setMsg("Stopping cloud phone…"); load(); }
   async function del(p) {
     if (!confirm(`Delete Cloud Phone ${p.phoneId}? A running phone will be stopped first.`)) return;
-    if (!p.runId) { setPhones(ps => ps.filter(x => x.phoneId !== p.phoneId)); setMsg("Cloud phone removed."); return; }
-    setPhones(ps => ps.filter(x => x.runId !== p.runId));
-    setHidden(h => { const n = new Set([...h].map(String)); n.add(String(p.runId)); localStorage.setItem("ncp_hidden", JSON.stringify([...n])); return n; });
+    // ALWAYS go through the server - even with no run id yet - so the
+    // workflow run is deleted too, not just hidden from this screen.
+    const key = p.runId || p.phoneId;
+    setPhones(ps => ps.filter(x => String(x.runId) !== String(p.runId) && x.phoneId !== p.phoneId));
+    setHidden(h => { const n = new Set([...h].map(String)); n.add(String(key)); if (p.runId) n.add(String(p.runId)); localStorage.setItem("ncp_hidden", JSON.stringify([...n])); return n; });
     // Keep asking the server until the phone is really gone (a running
     // phone must finish stopping first).
     setMsg(`Deleting ${p.phoneId}… stopping it first, this can take ~30s.`);
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 40; i++) {
       try {
-        const r = await fetch(`/api/phones/${p.runId}/delete`, { method: "DELETE" });
+        const r = await fetch(`/api/phones/${encodeURIComponent(key)}/delete`, { method: "DELETE" });
         const d = await r.json();
         if (d.deleted) { setMsg("Cloud phone deleted."); load(); return; }
         if (!r.ok && r.status !== 202) { setNotice(d.error || "Many users are using free cloud phones, try again later."); load(); return; }
@@ -121,7 +123,7 @@ export default function Dashboard({ user, tokenReady }) {
     const d = await r.json().catch(() => ({}));
     if (r.ok) location.href = "/login"; else alert(d.error || "Could not delete account.");
   }
-  const visibleAll = phones.filter(p => !hidden.has(String(p.runId)));
+  const visibleAll = phones.filter(p => !hidden.has(String(p.runId)) && !hidden.has(String(p.phoneId)));
   const visible = user.role === "admin" && view === "all" ? visibleAll : visibleAll.filter(p => p.owner === user.username);
   const liveCount = visible.filter(p => p.status === "in_progress" || p.status === "running").length;
   return (<div className="shell">
