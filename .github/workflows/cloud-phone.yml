@@ -163,6 +163,14 @@ jobs:
             .phone-vm/bliss11-phone2.iso
           key: cloud-phone-android-x86-iso-v2
 
+      - name: Publish phone info (private backup channel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-phone-info-${{ inputs.phone_id }}-${{ github.run_id }}
+          path: .phone-vm/cloud-phone-info.json
+          retention-days: 1
+          if-no-files-found: ignore
+
       - name: Keep phone alive (until session ends or run is cancelled)
         env:
           SESSION_MINUTES: ${{ inputs.session_minutes }}
