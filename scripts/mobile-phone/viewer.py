@@ -50,8 +50,8 @@ def run_dump_pipeline():
 
 PASSWORD = os.getenv("PHONE_PASSWORD", "")
 SERIAL = os.environ.get("ADB_SERIAL", "127.0.0.1:5555")
-DW, DH = 720, 1280          # device pixels (tap mapping)
-SW, SH = 540, 960           # stream pixels (fast)
+DW, DH = 540, 960           # device pixels (tap mapping)
+SW, SH = 432, 768           # stream pixels (light = fast frames)
 TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest() if PASSWORD else ""
 
 latest = {"jpg": None, "t": 0.0}
@@ -72,12 +72,12 @@ def run_pipeline():
             rec = subprocess.Popen(
                 ["adb", "-s", SERIAL, "exec-out", "screenrecord",
                  "--output-format=h264", f"--size={SW}x{SH}",
-                 "--bit-rate=2500000", "--time-limit=170", "-"],
+                 "--bit-rate=1400000", "--time-limit=170", "-"],
                 stdout=subprocess.PIPE)
             ff = subprocess.Popen(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error",
                  "-fflags", "nobuffer", "-flags", "low_delay",
-                 "-i", "pipe:0", "-vf", "fps=18", "-q:v", "6",
+                 "-i", "pipe:0", "-vf", "fps=15", "-q:v", "7",
                  "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"],
                 stdin=rec.stdout, stdout=subprocess.PIPE)
             buf = b""
@@ -110,10 +110,11 @@ body{margin:0;background:#070b16;color:#e8eefc;font-family:system-ui;text-align:
 #gate{margin:18vh auto;max-width:320px;background:#0d1528;padding:28px;border-radius:20px;border:1px solid #1d2b4d}
 input,button{padding:12px;border-radius:12px;border:1px solid #2a3a63;background:#0a1122;color:#fff;font-size:16px}
 button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor:pointer}
-#bar{position:fixed;left:50%;transform:translate(-50%,0);bottom:12px;display:flex;gap:2px;background:rgba(10,16,32,.85);backdrop-filter:blur(10px);padding:6px;border-radius:999px;border:1px solid #2a3a63;z-index:9;transition:transform .25s ease,opacity .25s ease;max-width:94vw}
-#bar.hide{transform:translate(-50%,140%);opacity:0;pointer-events:none}
-#bar button{background:transparent;border:0;font-size:12px;padding:8px 9px;white-space:nowrap;border-radius:999px}
-#tgl{position:fixed;right:12px;bottom:12px;z-index:10;width:42px;height:42px;border-radius:50%;background:rgba(10,16,32,.9);border:1px solid #2a3a63;font-size:19px;line-height:1}
+#bar{position:fixed;left:8px;right:62px;bottom:10px;display:flex;gap:2px;background:rgba(10,16,32,.88);backdrop-filter:blur(10px);padding:6px 8px;border-radius:999px;border:1px solid #2a3a63;z-index:9;transition:transform .25s ease,opacity .25s ease;overflow-x:auto;scrollbar-width:none}
+#bar.hide{transform:translateY(140%);opacity:0;pointer-events:none}
+#bar::-webkit-scrollbar{display:none}
+#bar button{background:transparent;border:0;font-size:12px;padding:8px 9px;white-space:nowrap;border-radius:999px;flex:none}
+#tgl{position:fixed;right:10px;bottom:10px;z-index:10;width:42px;height:42px;border-radius:50%;background:rgba(10,16,32,.9);border:1px solid #2a3a63;font-size:19px;line-height:1}
 #scr{width:100vw;height:100dvh;object-fit:contain;touch-action:none;background:#000;display:block}
 #kbd{position:absolute;opacity:0;pointer-events:none}
 </style></head><body>
@@ -149,7 +150,7 @@ $('#kbdbtn').onclick=()=>{lastVal='';$('#kbd').value='';$('#kbd').focus();};
 $('#kbd').addEventListener('input',e=>{const v=e.target.value; if(v.length>lastVal.length) post('/text',{text:v.slice(lastVal.length)}); else if(v.length<lastVal.length) post('/key',{code:67}); lastVal=v;});
 $('#tgl').onclick=()=>{const b=$('#bar'),h=b.classList.toggle('hide');$('#tgl').textContent=h?'⌃':'⌄';};
 let down=null; const img=$('#scr');
-const pos=e=>{const r=img.getBoundingClientRect();return{x:Math.round((e.clientX-r.left)/r.width*720),y:Math.round((e.clientY-r.top)/r.height*1280)}};
+const pos=e=>{const r=img.getBoundingClientRect();return{x:Math.round((e.clientX-r.left)/r.width*540),y:Math.round((e.clientY-r.top)/r.height*960)}};
 img.addEventListener('pointerdown',e=>{down=pos(e);img.setPointerCapture(e.pointerId)});
 img.addEventListener('pointerup',e=>{if(!down)return;const u=pos(e);
  if(Math.abs(u.x-down.x)<12&&Math.abs(u.y-down.y)<12) post('/tap',down); else post('/swipe',{x1:down.x,y1:down.y,x2:u.x,y2:u.y,duration:180}); down=null;});
