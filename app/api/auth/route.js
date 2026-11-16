@@ -28,6 +28,7 @@ export async function POST(req) {
       if (name.length < 2) return NextResponse.json({ error: "Please enter your name." }, { status: 400 });
       if (!USER_RE.test(username)) return NextResponse.json({ error: "Username must be 3-32 chars: letters, numbers, _ . -" }, { status: 400 });
       if (password.length < 8) return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+      if (body.agree !== true) return NextResponse.json({ error: "Please tick the box to agree to the Terms of Service and Privacy Policy." }, { status: 400 });
       if (username.toLowerCase() === "admin") return NextResponse.json({ error: "That username is reserved." }, { status: 400 });
       if (await findUser(username)) return NextResponse.json({ error: "That username is already taken. Try another one." }, { status: 409 });
       const recent = await recentSignupFromIp(ip).catch(() => null);
