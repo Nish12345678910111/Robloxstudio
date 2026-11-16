@@ -118,7 +118,7 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 #scr{position:fixed;inset:0;width:100%;height:100%;object-fit:contain;touch-action:none;background:#000;display:block}
 #kbd{position:absolute;opacity:0;pointer-events:none}
 </style></head><body>
-<div id="gate"><h2>☁️📱 NishCloudPhone</h2><p>Enter the phone password</p>
+<div id="gate"><h2>☁️📱 NishCloudPhone</h2><p id="gateSub">Enter the phone password</p>
 <form id="f"><input type="password" id="pw" placeholder="Password" autocomplete="current-password"><br><br>
 <button style="width:100%">Connect →</button></form><p id="e" style="color:#ff8fab"></p></div>
 <div id="app" style="display:none">
@@ -137,7 +137,7 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 const $=s=>document.querySelector(s); let lastVal="";
 if(window.__EMBED){startScreen();}
 function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr'); const k=window.__TOK||'';
- if(window.__FB){ // fallback screen: snapshot polling - works even if the live stream is stuck
+ if(window.__FB){ const gs=$('#gateSub'); if(gs&&!window.__EMBED) gs.textContent='Fallback screen - enter the phone password'; // snapshot polling: works even if the live stream is stuck
    const tick=()=>{const i=new Image(); i.onload=()=>{img.src=i.src;$('#wait').style.display='none'; setTimeout(tick,450);}; i.onerror=()=>setTimeout(tick,1200); i.src='/frame.jpg?t='+k+'&x='+Date.now();}; tick(); return;}
  const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; boot(); img.onerror=()=>setTimeout(boot,2000);
  const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
@@ -158,7 +158,7 @@ const pos=e=>{const r=img.getBoundingClientRect(),ia=432/768,ea=r.width/r.height
  return{x:Math.round(cx/w*540),y:Math.round(cy/h*960)}};
 img.addEventListener('pointerdown',e=>{e.preventDefault();down=pos(e);try{img.setPointerCapture(e.pointerId)}catch(_){}});
 img.addEventListener('pointerup',e=>{e.preventDefault();if(!down)return;const u=pos(e);
- if(Math.abs(u.x-down.x)<12&&Math.abs(u.y-down.y)<12) post('/tap',down); else post('/swipe',{x1:down.x,y1:down.y,x2:u.x,y2:u.y,duration:180}); down=null;});
+ if(Math.abs(u.x-down.x)<34&&Math.abs(u.y-down.y)<34) post('/tap',down); else post('/swipe',{x1:down.x,y1:down.y,x2:u.x,y2:u.y,duration:260}); down=null;});
 img.addEventListener('contextmenu',e=>e.preventDefault());
 </script></body></html>"""
 
