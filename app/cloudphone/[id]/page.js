@@ -20,7 +20,7 @@ export default async function CloudPhonePage({ params }) {
   const screen = viewer || (phone.tunnel_url ? phone.tunnel_url + "/vnc.html?autoconnect=true&resize=scale" : null);
   return (<main className="wrap">
     <header className="top"><div><h1>📱 Cloud Phone</h1>
-      <p className="muted">{phone.phone_id} · {phone.edition === "android9" ? "Android 9" : "Android 11"} · {phone.status}</p></div>
+      <p className="muted">{phone.phone_id} · Android 11 · {phone.status}</p></div>
       <Link className="btnLink" href="/">← My cloud phones</Link></header>
     <div className="credBox"><p><b>Url -</b> {screen ? <a href={screen} target="_blank" rel="noreferrer">{screen}</a> : "starting…"}</p>
       <p><b>Password -</b> {phone.phone_password ? <code>{phone.phone_password}</code> : "•••••••• (appears when ready)"}</p></div>

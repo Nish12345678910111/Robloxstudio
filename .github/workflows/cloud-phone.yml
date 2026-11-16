@@ -1,13 +1,13 @@
 name: Cloud Phone
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
-# Android in QEMU -> noVNC -> random Cloudflare Quick Tunnel URL + VNC password.
-# The phone's URL/password are stored only in the owner's account database
-# row (via the AIVEN_DATABASE_URL secret). They are never printed in logs,
-# never uploaded, and never committed.
+# Android 11 in the official Android Emulator -> own viewer -> random
+# tunnel URL + password. The phone's URL/password are stored only in the
+# owner's account database row (via the AIVEN_DATABASE_URL secret). They
+# are never printed in logs, never uploaded, and never committed.
 #
-# GitHub hard limit: a job can run at most 360 minutes (~6h). Nothing can
-# run "forever" on GitHub Actions - when a run ends, just start a new phone.
+# A job can run at most 360 minutes (~6h). Nothing can run "forever" -
+# when a run ends, just start a new phone.
 
 run-name: "Cloud Phone ${{ inputs.phone_id }}"
 
@@ -24,7 +24,7 @@ on:
         required: true
         default: "android11"
         type: choice
-        options: ["android11", "android9"]
+        options: ["android11"]
       session_minutes:
         description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
@@ -66,19 +66,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install QEMU, noVNC and tools (android9 fallback only)
-        if: inputs.edition == 'android9'
+      - name: Enable hardware acceleration
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils openjdk-17-jre-headless unzip \
-            novnc websockify \
-            socat curl ca-certificates adb xorriso cpio aria2 ffmpeg
-          python3 -m pip install -q pg8000 || true
-          # /dev/kvm exists but is root:kvm 0660 - make it writable so QEMU
-          # gets real hardware acceleration instead of slow TCG emulation.
+          # Give the Android Emulator real hardware acceleration (KVM).
+          # Without a writable /dev/kvm the emulator refuses to start and
+          # the phone screen stays black - this is the standard fix.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
           sudo chmod 666 /dev/kvm || true
-          if [ -w /dev/kvm ]; then echo "KVM: READY (hardware acceleration)"; else echo "KVM: not writable, TCG fallback"; fi
+          if [ -w /dev/kvm ]; then echo "Acceleration: READY"; else echo "Acceleration: software mode"; fi
           nproc; free -h
 
       - name: Install cloudflared (Cloudflare Tunnel)
@@ -93,17 +90,6 @@ jobs:
           sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
           cloudflared --version
 
-      - name: Cache Android ISO
-        if: inputs.edition == 'android9'
-        uses: actions/cache@v4
-        with:
-          path: |
-            .phone-vm/android-x86.iso
-            .phone-vm/android-x86-phone2.iso
-            .phone-vm/bliss11.iso
-            .phone-vm/bliss11-phone2.iso
-          key: cloud-phone-android-x86-iso-v2
-
       - name: Cache Android Emulator (SDK + phone image)
         uses: actions/cache@v4
         with:
@@ -114,16 +100,7 @@ jobs:
             .phone-vm/bin
           key: cloud-phone-emulator-v2
 
-      - name: Cache Bliss OS Android 11 ISO
-        if: inputs.edition == 'android9'
-        uses: actions/cache@v4
-        with:
-          path: |
-            .phone-vm/bliss11.iso
-            .phone-vm/bliss11-phone2.iso
-          key: cloud-phone-bliss11-iso-v1
-
-      - name: Start Cloud Phone (QEMU + noVNC + Cloudflare tunnel)
+      - name: Start Cloud Phone
         env:
           PHONE_ID: ${{ inputs.phone_id }}
           START_ONLY: "1"
@@ -148,21 +125,6 @@ jobs:
             .phone-vm/bin
           key: cloud-phone-emulator-v2
 
-      - name: Save Android ISO to cache NOW (not at job end)
-        if: inputs.edition == 'android9'
-        continue-on-error: true
-        # actions/cache normally saves in post-job, which never happens when
-        # a 340-min session is cancelled - that is why every run re-downloaded
-        # 921 MB. Saving explicitly here makes the NEXT phone start fast.
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            .phone-vm/android-x86.iso
-            .phone-vm/android-x86-phone2.iso
-            .phone-vm/bliss11.iso
-            .phone-vm/bliss11-phone2.iso
-          key: cloud-phone-android-x86-iso-v2
-
       - name: Publish phone info (private backup channel)
         uses: actions/upload-artifact@v4
         with:
@@ -179,8 +141,8 @@ jobs:
           echo "Keeping it alive for ${SESSION_MINUTES} minutes."
           DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            if [ -f .phone-vm/qemu.pid ] && ! kill -0 "$(cat .phone-vm/qemu.pid)" 2>/dev/null; then
-              echo "::error::QEMU died early"; tail -n 50 .phone-vm/websockify.log .phone-vm/cloudflared.log || true; exit 1
+            if [ -f .phone-vm/emulator.pid ] && ! kill -0 "$(cat .phone-vm/emulator.pid)" 2>/dev/null; then
+              echo "phone stopped"; exit 1
             fi
             sleep 60
           done

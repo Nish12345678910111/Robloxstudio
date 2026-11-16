@@ -54,7 +54,7 @@ export async function GET(req) {
       edition: r.edition, owner: r.owner_username,
       status: gh?.status || (r.status === "busy" ? "busy" : "starting"),
       conclusion: gh?.conclusion || null, createdAt: gh?.createdAt || r.created_at,
-      viewerUrl: r.viewer_url || gh?.viewerUrl || null, novncUrl: r.tunnel_url ? r.tunnel_url + "/vnc.html?autoconnect=true&resize=scale" : (gh?.novncUrl || null),
+      viewerUrl: r.viewer_url || gh?.viewerUrl || null,
       tunnelUrl: r.tunnel_url || gh?.tunnelUrl || null, password: r.phone_password || gh?.password || null
     });
   }
