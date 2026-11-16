@@ -15,6 +15,10 @@ function PhoneCard({ p, user, onStop, onDelete }) {
   const state = live ? "● LIVE" : p.status === "busy" ? "⏳ Busy — try again later" : (p.status === "starting" || p.status === "in_progress") ? "🚀 Starting…" : p.status === "queued" ? "Queued" : p.conclusion === "cancelled" ? "Stopped" : p.conclusion || p.status;
   const boxRef = useRef(null);
   const [isFs, setIsFs] = useState(false);
+  const [nowS, setNowS] = useState(() => Date.now());
+  useEffect(() => { if (live) return; const i = setInterval(() => setNowS(Date.now()), 1000); return () => clearInterval(i); }, [live]);
+  const elapsed = p.createdAt ? Math.max(0, Math.floor((nowS - new Date(p.createdAt).getTime()) / 1000)) : 0;
+  const elapsedTxt = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
   useEffect(() => {
     const on = () => setIsFs(document.fullscreenElement === boxRef.current);
     document.addEventListener("fullscreenchange", on);
@@ -37,7 +41,8 @@ function PhoneCard({ p, user, onStop, onDelete }) {
       <button className="fsBtn" onClick={toggleFs}>{isFs ? "✕ Exit full screen" : "⛶ Full screen"}</button>
       <div className="phoneBox">
         {live ? <iframe src={screenUrl} title={"Cloud Phone " + p.phoneId} allow="fullscreen; clipboard-read; clipboard-write" /> :
-          <div className="phoneWait"><div className="spin" /><p>{p.status === "busy" ? "Many users are using free cloud phones, try again later." : "Cloud phone starting…\nYour screen will appear here"}</p></div>}
+          <div className="phoneWait"><div className="spin" /><p>{p.status === "busy" ? "Many users are using free cloud phones, try again later." : "Cloud phone starting…\nYour screen will appear here"}</p>
+          {p.status !== "busy" && <p className="eta">⏱ {elapsedTxt} elapsed<br />⚡ average start time: ~1:30</p>}</div>}
       </div>
     </div>
     <footer className="cardFoot">

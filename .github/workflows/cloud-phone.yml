@@ -66,7 +66,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install QEMU, noVNC and tools (max performance setup)
+      - name: Install QEMU, noVNC and tools (android9 fallback only)
+        if: inputs.edition == 'android9'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -93,6 +94,7 @@ jobs:
           cloudflared --version
 
       - name: Cache Android ISO
+        if: inputs.edition == 'android9'
         uses: actions/cache@v4
         with:
           path: |
@@ -106,11 +108,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            .phone-vm/sdk
+            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/system-images
             .phone-vm/avd
-          key: cloud-phone-emulator-v1
+            .phone-vm/bin
+          key: cloud-phone-emulator-v2
 
       - name: Cache Bliss OS Android 11 ISO
+        if: inputs.edition == 'android9'
         uses: actions/cache@v4
         with:
           path: |
@@ -137,11 +142,14 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: |
-            .phone-vm/sdk
+            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/system-images
             .phone-vm/avd
-          key: cloud-phone-emulator-v1
+            .phone-vm/bin
+          key: cloud-phone-emulator-v2
 
       - name: Save Android ISO to cache NOW (not at job end)
+        if: inputs.edition == 'android9'
         continue-on-error: true
         # actions/cache normally saves in post-job, which never happens when
         # a 340-min session is cancelled - that is why every run re-downloaded

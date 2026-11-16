@@ -95,3 +95,4 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
 }
 .health{display:flex;flex-direction:column;gap:5px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;font-size:12.5px}
 .health b{font-size:13px}.health span{color:var(--mut)}
+.eta{color:#9db9ff;font-size:13.5px;line-height:1.6;background:rgba(79,124,255,.08);border:1px solid #22335e;border-radius:12px;padding:8px 14px}
