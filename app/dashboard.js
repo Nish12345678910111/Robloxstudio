@@ -115,7 +115,8 @@ export default function Dashboard({ user, tokenReady }) {
   const [sideOpen, setSideOpen] = useState(true);
   useEffect(() => { if (window.innerWidth <= 860) setSideOpen(false); }, []);
   const [health, setHealth] = useState(null);
-  useEffect(() => { fetch("/api/keys").then(r => r.ok && r.json()).then(d => d && setHealth(d)).catch(() => {}); }, []);
+  useEffect(() => { const ck = () => fetch("/api/keys").then(r => r.ok && r.json()).then(d => d && setHealth(d)).catch(() => {});
+    ck(); const i = setInterval(() => { if (!document.hidden) ck(); }, 45000); return () => clearInterval(i); }, []);
   async function delAccount() {
     const pw = prompt("Delete your account forever? Type your password to confirm. Your cloud phones will also be deleted.");
     if (pw === null) return;
