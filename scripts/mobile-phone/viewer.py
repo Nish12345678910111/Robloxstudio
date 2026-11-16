@@ -229,7 +229,8 @@ class H(BaseHTTPRequestHandler):
         return self._send(404, "not found")
     def do_POST(self):
         from urllib.parse import urlparse
-        self.path = urlparse(self.path).path  # token rides in the query string
+        _authed_first = authed(self)  # token rides in the query - check BEFORE stripping it
+        self.path = urlparse(self.path).path
         n = int(self.headers.get("Content-Length", 0))
         try: body = json.loads(self.rfile.read(n) or b"{}")
         except Exception: body = {}
@@ -238,7 +239,7 @@ class H(BaseHTTPRequestHandler):
             if not ok: return self._send(401, json.dumps({"error": "wrong password"}), "application/json")
             return self._send(200, "{}", "application/json",
                               {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
-        if not authed(self): return self._send(401, "login first")
+        if not _authed_first: return self._send(401, "login first")
         if self.path == "/tap":
             r = adb("shell", "input", "tap", str(int(body["x"])), str(int(body["y"])))
             if r is None or r.returncode != 0:
