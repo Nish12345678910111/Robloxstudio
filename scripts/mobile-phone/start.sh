@@ -160,9 +160,17 @@ if [ "$EDITION" = "android11" ] && [ "${USE_EMULATOR:-1}" = "1" ]; then
     [ -n "$VIEWER_URL" ] && break; sleep 2
   done
   TUNNEL_URL="$VIEWER_URL"
+  SAVED=0
   if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
     VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
-      python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
+      python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && SAVED=1 || SAVED=0
+  fi
+  if [ "$SAVED" != "1" ]; then
+    # Private backup channel (token-only access, never printed) so the
+    # dashboard still receives this phone even if the main save is down.
+    cat > "$WORKDIR_PHONE/cloud-phone-info.json" <<EOF
+{"phoneId":"${PHONE_ID:-manual}","edition":"${EDITION}","tunnelUrl":"${TUNNEL_URL}","novncUrl":"${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale","viewerUrl":"${VIEWER_URL}","password":"${VNC_PASSWORD}"}
+EOF
   fi
   echo "Cloud phone created."
   if [ "${START_ONLY:-0}" = "1" ]; then exit 0; fi
@@ -471,10 +479,18 @@ fi
 # ------------------------------------------------------- save phone access --
 # The phone's URL + password are stored ONLY in the owner's account row
 # (small text fields). Nothing credential-like is printed or uploaded here.
-if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
-  VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
-    python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
-fi
+  SAVED=0
+  if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
+    VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+      python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && SAVED=1 || SAVED=0
+  fi
+  if [ "$SAVED" != "1" ]; then
+    # Private backup channel (token-only access, never printed) so the
+    # dashboard still receives this phone even if the main save is down.
+    cat > "$WORKDIR_PHONE/cloud-phone-info.json" <<EOF
+{"phoneId":"${PHONE_ID:-manual}","edition":"${EDITION}","tunnelUrl":"${TUNNEL_URL}","novncUrl":"${TUNNEL_URL}/vnc.html?autoconnect=true&resize=scale","viewerUrl":"${VIEWER_URL}","password":"${VNC_PASSWORD}"}
+EOF
+  fi
 echo "Cloud phone created."
 
 # ----------------------------------------------------------------- banner ----
