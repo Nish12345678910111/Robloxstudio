@@ -3,3 +3,6 @@ node_modules/
 .env*.local
 .phone-vm/
 cloud-phone-info.json
+
+__pycache__/
+*.pyc
