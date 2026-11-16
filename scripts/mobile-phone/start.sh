@@ -272,6 +272,8 @@ if command -v adb >/dev/null 2>&1; then
     $S settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
     $S settings put system user_rotation 0 >/dev/null 2>&1 || true
     $S svc power stayon true >/dev/null 2>&1 || true
+    $S settings put system screen_off_timeout 2147483647 >/dev/null 2>&1 || true
+    $S input keyevent 224 >/dev/null 2>&1 || true
     # Auto WiFi: QEMU gives the phone a virtio-net cable; Android-x86/Bliss
     # presents that as VirtWiFi. Turn WiFi ON and auto-connect so apps see a
     # connected network with zero tapping (no nearby-network picker, ever).
@@ -291,6 +293,15 @@ if command -v adb >/dev/null 2>&1; then
     $S input keyevent 82 >/dev/null 2>&1 || true
     $S input keyevent 3 >/dev/null 2>&1 || true
     $S am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
+    # Maintenance: for the next ~10 min keep the display awake, WiFi joined
+    # and the phone parked on its home launcher (first boots settle slowly).
+    for _ in $(seq 1 20); do
+      sleep 30
+      $S input keyevent 224 >/dev/null 2>&1 || true
+      $S settings put system screen_off_timeout 2147483647 >/dev/null 2>&1 || true
+      $S svc wifi enable >/dev/null 2>&1 || true
+      $S cmd wifi connect-network VirtWifi open >/dev/null 2>&1 || true
+    done
     echo "setup-skipper: done $(date -u +%FT%TZ)"
   ) > setup-skip.log 2>&1 &
   echo $! > setup-skip.pid
