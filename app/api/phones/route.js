@@ -17,7 +17,7 @@ export async function GET(req) {
   if (!dbConfigured()) return NextResponse.json({ phones: [], totalPhones: 0, notice: "Database is not connected yet. Set AIVEN_DATABASE_URL in Vercel env vars, then redeploy." });
   let rows = [];
   try { await ensureSchema(); purgePhones().catch(() => {}); rows = await listPhoneRows(user); }
-  catch { return NextResponse.json({ phones: [], totalPhones: 0, notice: BUSY }); }
+  catch { await new Promise(r => setTimeout(r, 400)); try { rows = await listPhoneRows(user); } catch { return NextResponse.json({ phones: [], totalPhones: 0, notice: BUSY }); } }
 
   // Merge saved phones (visible instantly, even before the run exists) with
   // live run data. Ordinary users only ever see their own saved phones;
