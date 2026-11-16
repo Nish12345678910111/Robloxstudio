@@ -55,7 +55,21 @@ function PhoneCard({ p, user, onStop, onDelete }) {
   </section>);
 }
 export default function Dashboard({ user, tokenReady }) {
-  const [phones, setPhones] = useState([]), [msg, setMsg] = useState(""), [notice, setNotice] = useState(null), [creating, setCreating] = useState(false);
+  const [phones, setPhones] = useState([]), [creating, setCreating] = useState(false);
+  const [toasts, setToasts] = useState([]);
+  const toastId = useRef(0);
+  const pushToast = useCallback((kind, text) => {
+    if (!text) return;
+    const id = ++toastId.current;
+    setToasts(ts => [...ts.slice(-3), { id, kind, text }]);
+    setTimeout(() => setToasts(ts => ts.filter(t => t.id !== id)), 15000); // auto-remove after 15s
+  }, []);
+  const setMsg = useCallback(t => pushToast("ok", t), [pushToast]);
+  const noticeRef = useRef(null);
+  const setNotice = useCallback(t => { // same warning never spams twice in a row
+    if (t && t !== noticeRef.current) pushToast("warn", t);
+    noticeRef.current = t || null;
+  }, [pushToast]);
   const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem("ncp_hidden") || "[]")); } catch { return new Set(); } });
   const load = useCallback(async () => { const r = await fetch("/api/phones"); if (r.ok) { const d = await r.json(); setPhones(d.phones || []); setNotice(d.notice || null); } }, []);
   useEffect(() => { load(); const i = setInterval(() => { if (!document.hidden) load(); }, 20000); return () => clearInterval(i); }, [load]);
@@ -79,7 +93,7 @@ export default function Dashboard({ user, tokenReady }) {
     if (!confirm(`Delete Cloud Phone ${p.phoneId}? A running phone will be stopped first.`)) return;
     if (!p.runId) { setPhones(ps => ps.filter(x => x.phoneId !== p.phoneId)); setMsg("Cloud phone removed."); return; }
     setPhones(ps => ps.filter(x => x.runId !== p.runId));
-    setHidden(h => { const n = new Set(h); n.add(p.runId); localStorage.setItem("ncp_hidden", JSON.stringify([...n])); return n; });
+    setHidden(h => { const n = new Set([...h].map(String)); n.add(String(p.runId)); localStorage.setItem("ncp_hidden", JSON.stringify([...n])); return n; });
     // Keep asking the server until the phone is really gone (a running
     // phone must finish stopping first).
     setMsg(`Deleting ${p.phoneId}… stopping it first, this can take ~30s.`);
@@ -107,10 +121,11 @@ export default function Dashboard({ user, tokenReady }) {
     const d = await r.json().catch(() => ({}));
     if (r.ok) location.href = "/login"; else alert(d.error || "Could not delete account.");
   }
-  const visibleAll = phones.filter(p => !hidden.has(p.runId));
+  const visibleAll = phones.filter(p => !hidden.has(String(p.runId)));
   const visible = user.role === "admin" && view === "all" ? visibleAll : visibleAll.filter(p => p.owner === user.username);
   const liveCount = visible.filter(p => p.status === "in_progress" || p.status === "running").length;
   return (<div className="shell">
+    {!sideOpen && <button className="sideFab" onClick={() => setSideOpen(true)} title="Open sidebar">☰</button>}
     <aside className={sideOpen ? "side" : "side closed"}>
       <div className="brandRow"><div className="brand">☁️📱<div><b>NishCloudPhone</b><span>free cloud phones</span></div></div>
         <button className="sideX" onClick={() => setSideOpen(false)} title="Close sidebar">✕</button></div>
@@ -133,8 +148,7 @@ export default function Dashboard({ user, tokenReady }) {
     <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 · auto WiFi · straight to home screen</p></div>
       </header>
     {!tokenReady && <p className="warn">⏳ Cloud phones are busy right now — Many users are using free cloud phones, try again later.</p>}
-    {notice && <p className="warn">⏳ {notice}</p>}
-    {msg && <p className="msg">{msg}</p>}
+    <div className="toasts">{toasts.map(t => <div key={t.id} className={"toast " + t.kind} onClick={() => setToasts(ts => ts.filter(x => x.id !== t.id))}>{t.kind === "warn" ? "⚠️ " : ""}{t.text}</div>)}</div>
     <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
     {visible.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate cloud phone, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
       : <div className="grid">{visible.map(p => <PhoneCard key={p.phoneId || p.runId} p={p} user={user} onStop={stop} onDelete={del} />)}</div>}

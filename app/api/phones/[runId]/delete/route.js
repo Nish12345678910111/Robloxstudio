@@ -23,7 +23,7 @@ export async function DELETE(req, { params }) {
     }
     const del = await deleteRun(runId);
     const after = await getRunStatus(runId).catch(() => "unknown");
-    if (after === null || del === 204) return NextResponse.json({ ok: true, deleted: true });
+    if (after === null || del === 204) { await markPhoneDeletedByRun(Number(runId)).catch(() => {}); return NextResponse.json({ ok: true, deleted: true }); }
     return NextResponse.json({ ok: true, deleted: false, state: "deleting", githubStatus: del }, { status: 202 });
   } catch { return NextResponse.json({ error: "Many users are using free cloud phones, try again later." }, { status: 503 }); }
 }
