@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser, tokenConfigured } from "../../../lib/auth";
-import { listPhones, dispatchPhone } from "../../../lib/github";
-import { dbConfigured, ensureSchema, createPhoneRow, countActivePhones, listPhoneRows, linkRun, purgePhones } from "../../../lib/db";
+import { listPhones, dispatchPhone, deleteRun, getRunStatus } from "../../../lib/github";
+import { dbConfigured, ensureSchema, createPhoneRow, countActivePhones, listPhoneRows, linkRun, purgePhones, deletePhoneRow } from "../../../lib/db";
 import { clientIp, vpnBlocked, VPN_MSG } from "../../../lib/netguard";
 export const maxDuration = 60;
 
@@ -27,6 +27,21 @@ export async function GET(req) {
     try { live = await listPhones(); } catch { liveOk = false; }
   }
   const byId = new Map(live.map(p => [p.phoneId, p]));
+  // AUTO-CLEAN: a phone whose run has STOPPED (completed) but was never
+  // deleted gets removed everywhere - the run is deleted upstream and its
+  // row is deleted from the same phones table. No graveyard rows, no clutter.
+  if (liveOk) {
+    let cleaned = 0;
+    for (const r of [...rows]) {
+      const gh = byId.get(r.phone_id);
+      if (gh && gh.status === "completed" && cleaned < 5) {
+        cleaned++;
+        try { await deleteRun(gh.runId); } catch {}
+        await deletePhoneRow(r.phone_id).catch(() => {});
+        rows.splice(rows.indexOf(r), 1);
+      }
+    }
+  }
   const phones = [];
   for (const r of rows) {
     const gh = byId.get(r.phone_id);
@@ -62,6 +77,7 @@ export async function POST(req) {
   lastCreate.set(user.id, now);
   try {
     await ensureSchema();
+    await purgePhones().catch(() => {}); // deleting-queued / stale rows free up slots first
     if (user.role !== "admin" && (await countActivePhones(user.id)) >= MAX_FREE)
       return NextResponse.json({ error: "You already have 5 cloud phones. Delete some cloud phones to get a new one.", code: "LIMIT" }, { status: 409 });
     const phoneId = "phone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
