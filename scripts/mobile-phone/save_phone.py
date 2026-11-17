@@ -25,7 +25,7 @@ def main():
         try:
             cur = conn.cursor()
             cur.execute(
-                "UPDATE phones_cloudphone SET viewer_url=%s, tunnel_url=%s, phone_password=%s, "
+                "UPDATE phones_cloudphone SET viewer_url=%s, tunnel_url=COALESCE(%s, tunnel_url), phone_password=%s, "
                 "status='running', updated_at=now() WHERE phone_id=%s",
                 [want_url, os.environ.get("TUNNEL_URL") or None, want_pw, os.environ["PHONE_ID"]])
             if cur.rowcount == 0:
