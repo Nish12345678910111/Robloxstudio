@@ -33,7 +33,7 @@ SERIAL="emulator-5554"
 # noVNC fallback stack (virtual display + VNC + web bridge) installs in
 # the BACKGROUND - startup speed is untouched; the fallback screen simply
 # comes online a little after the main screen.
-( sudo -n apt-get update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 >/dev/null 2>&1 ) &
+( sudo -n apt-get update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool >/dev/null 2>&1 ) &
 # ffmpeg as ONE static binary in the background (never blocks startup).
 if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x "$WORKDIR_PHONE/bin/ffmpeg" ]; then
   ( curl -fsSL --retry 3 -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
@@ -117,11 +117,11 @@ for _ in $(seq 1 24); do
 done
 WIN_ARGS=(-no-window)
 if [ "$USE_VNC" = "1" ]; then
-  Xvfb :99 -screen 0 1000x1400x24 > xvfb.log 2>&1 &
+  Xvfb :99 -screen 0 500x800x24 > xvfb.log 2>&1 &
   echo $! > xvfb.pid
   export DISPLAY=:99 QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
   sleep 2
-  WIN_ARGS=()
+  WIN_ARGS=(-no-nested-warning)
 fi
 ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
@@ -175,7 +175,8 @@ adb start-server >/dev/null 2>&1 || true
 # bridge it to the web, tunnel it, and store that URL on the phone row.
 if [ "$USE_VNC" = "1" ]; then
   (
-    x11vnc -display :99 -forever -shared -noxdamage -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
+    ( for _ in $(seq 1 30); do xdotool search --name "arning" windowactivate --sync key Return >/dev/null 2>&1 && break; sleep 3; done ) >/dev/null 2>&1 &
+    x11vnc -display :99 -forever -shared -noxdamage -clip 432x768+0+0 -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
     websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 > websockify.log 2>&1 &
     cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:6080" > cloudflared-novnc.log 2>&1 &
     NOVNC_URL=""

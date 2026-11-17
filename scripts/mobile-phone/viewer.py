@@ -112,14 +112,14 @@ def run_pipeline():
                  # ~5s rescue screenshots got through). Default output is
                  # already H.264.
                  f"--size={SW}x{SH}",
-                 "--bit-rate=1200000", "--time-limit=180", "-"],
+                 "--bit-rate=900000", "--time-limit=180", "-"],
                 stdout=subprocess.PIPE)
             ff = subprocess.Popen(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error",
                  "-fflags", "nobuffer", "-flags", "low_delay",
                  "-probesize", "32768", "-analyzeduration", "0",
                  "-use_wallclock_as_timestamps", "1",
-                 "-i", "pipe:0", "-q:v", "7", "-r", "20",
+                 "-i", "pipe:0", "-q:v", "8", "-r", "20",
                  "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"],
                 stdin=rec.stdout, stdout=subprocess.PIPE)
             rec.stdout.close()
