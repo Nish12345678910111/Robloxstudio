@@ -127,7 +127,7 @@ ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
   nohup "$SDK/emulator/emulator" -avd phone "${WIN_ARGS[@]}" -no-audio -no-boot-anim \
     -gpu swiftshader_indirect -accel "$1" -memory 4096 -cores 4 -partition-size 32768 \
-    -port 5554 -no-snapshot -wipe-data -netdelay none -netspeed full \
+    -port 5554 -no-snapshot -wipe-data -netdelay none -netspeed full -camera-back none -camera-front none -no-metrics \
     > emulator.log 2>&1 &
   echo $! > emulator.pid
 }
