@@ -73,6 +73,32 @@ if [ "$SAVED" != "1" ]; then
 {"phoneId":"${PHONE_ID:-manual}","edition":"${EDITION}","tunnelUrl":"${TUNNEL_URL}","viewerUrl":"${VIEWER_URL}","password":"${VNC_PASSWORD}"}
 EOF
 fi
+(
+  while true; do
+    sleep 20
+    if [ -f viewer.pid ] && ! kill -0 "$(cat viewer.pid)" 2>/dev/null; then
+      PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 ADB_SERIAL="$SERIAL" \
+        python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" >> viewer.log 2>&1 &
+      echo $! > viewer.pid
+      echo "viewer restarted" >> supervisor.log
+    fi
+    if [ -f cloudflared-viewer.pid ] && ! kill -0 "$(cat cloudflared-viewer.pid)" 2>/dev/null; then
+      : > cloudflared-viewer.log
+      cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:8081" > cloudflared-viewer.log 2>&1 &
+      echo $! > cloudflared-viewer.pid
+      NEW_URL=""
+      for _ in $(seq 1 45); do
+        NEW_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-viewer.log | head -n1 || true)"
+        [ -n "$NEW_URL" ] && break; sleep 2
+      done
+      echo "tunnel restarted: $NEW_URL" >> supervisor.log
+      if [ -n "$NEW_URL" ] && [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
+        VIEWER_URL="$NEW_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+          python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
+      fi
+    fi
+  done
+) > supervisor.log 2>&1 &
 echo "Cloud phone created."
 
 # ------------------------------------------------------ emulator setup ------
@@ -160,7 +186,7 @@ CFG
   [ -d node_modules ] || npm install --ignore-scripts --no-audit --no-fund >> ../wsscrcpy.log 2>&1
   [ -f dist/index.js ] || npm run dist >> ../wsscrcpy.log 2>&1
   printf 'server:\n  - secure: false\n    port: 18083\n' > ../wss.yaml
-  cd dist && WS_SCRCPY_CONFIG="$WORKDIR_PHONE/wss.yaml" PATH="$PATH" node index.js >> ../../wsscrcpy.log 2>&1 &
+  cd dist && while true; do WS_SCRCPY_CONFIG="$WORKDIR_PHONE/wss.yaml" PATH="$PATH" node index.js >> ../../wsscrcpy.log 2>&1; sleep 3; done &
   echo $! > ../../wsscrcpy.pid
 ) >/dev/null 2>&1 &
 # soft keyboard must actually open when a text field is tapped
