@@ -58,6 +58,29 @@ latest = {"jpg": None, "t": 0.0}
 lock = threading.Lock()
 
 ADB = shutil.which("adb") or next((p for p in ("/usr/local/lib/android/sdk/platform-tools/adb", os.path.expanduser("~/Android/Sdk/platform-tools/adb")) if os.path.exists(p)), "adb")
+class InputShell:
+    """One persistent `adb shell` for input. Spawning a fresh adb process
+    per tap costs 150-300ms before the tap even reaches the phone - that
+    was the 'click does not react instantly' lag. Writing to a live
+    shell's stdin lands in ~10-30ms."""
+    def __init__(self):
+        self.p = None; self.lk = threading.Lock()
+    def send(self, cmd):
+        with self.lk:
+            for _ in range(2):
+                try:
+                    if self.p is None or self.p.poll() is not None:
+                        self.p = subprocess.Popen([ADB, "-s", SERIAL, "shell"],
+                            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self.p.stdin.write((cmd + "\n").encode()); self.p.stdin.flush()
+                    return
+                except Exception:
+                    try: self.p.kill()
+                    except Exception: pass
+                    self.p = None
+
+ISHELL = InputShell()
+
 def adb(*args, timeout=15):
     try:
         return subprocess.run([ADB, "-s", SERIAL, *args],
@@ -260,19 +283,18 @@ class H(BaseHTTPRequestHandler):
                               {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
         if not _authed_first: return self._send(401, "login first")
         if self.path == "/tap":
-            adb("shell", "input", "tap", str(int(body["x"])), str(int(body["y"])))
+            ISHELL.send(f"input tap {int(body['x'])} {int(body['y'])}")
         elif self.path == "/swipe":
-            adb("shell", "input", "swipe", str(int(body["x1"])), str(int(body["y1"])),
-                str(int(body["x2"])), str(int(body["y2"])), str(int(body.get("duration", 180))))
+            ISHELL.send(f"input swipe {int(body['x1'])} {int(body['y1'])} {int(body['x2'])} {int(body['y2'])} {int(body.get('duration', 260))}")
         elif self.path == "/key":
-            adb("shell", "input", "keyevent", str(int(body["code"])))
+            ISHELL.send(f"input keyevent {int(body['code'])}")
         elif self.path == "/text":
             text = str(body.get("text", ""))[:2000]
             if text:
                 # `input text` needs %s for spaces and shell escaping
                 esc = text.replace("\\", "\\\\").replace('"', '\\"').replace("'", "'\\''")
                 esc = esc.replace(" ", "%s").replace("\n", "%s")
-                adb("shell", f'input text "{esc}"')
+                ISHELL.send(f'input text "{esc}"')
         elif self.path == "/getclip":
             r = adb("shell", "cmd", "clipboard", "get")
             return self._send(200, json.dumps({"text": (r.stdout or "")[:2000]}), "application/json")

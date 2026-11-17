@@ -58,7 +58,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
       </div>
     </div>
     <footer className="cardFoot">
-      <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.viewerUrl ? <a href={p.viewerUrl + "/fallback"} target="_blank" rel="noreferrer">Fallback screen ↗</a> : null}</span>
+      <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.tunnelUrl ? <a href={p.tunnelUrl + "/vnc.html?autoconnect=true&resize=scale"} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : p.viewerUrl ? <a href={p.viewerUrl + "/fallback"} target="_blank" rel="noreferrer">Fallback screen ↗</a> : null}</span>
       <span className="footBtns">
         {(p.status === "in_progress" || p.status === "queued") && <button className="stop" onClick={() => onStop(p.runId)}>⏹ Stop Cloud Phone</button>}
         <button className="del" onClick={() => onDelete(p)}>🗑 Delete Cloud Phone</button>

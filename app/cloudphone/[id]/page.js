@@ -18,7 +18,7 @@ export default async function CloudPhonePage({ params }) {
   const viewer = phone.viewer_url && phone.phone_password
     ? phone.viewer_url + "?t=" + crypto.createHash("sha256").update(phone.phone_password).digest("hex") : phone.viewer_url;
   const screen = viewer;
-  const fallback = phone.viewer_url ? phone.viewer_url + "/fallback" : null;
+  const fallback = phone.tunnel_url ? phone.tunnel_url + "/vnc.html?autoconnect=true&resize=scale" : phone.viewer_url ? phone.viewer_url + "/fallback" : null;
   return (<main className="wrap">
     <header className="top"><div><h1>📱 Cloud Phone</h1>
       <p className="muted">{phone.phone_id} · Android 9 · {phone.status}</p></div>
