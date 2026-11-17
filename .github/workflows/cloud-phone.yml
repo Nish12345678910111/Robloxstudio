@@ -121,6 +121,19 @@ jobs:
             /usr/local/lib/android/sdk/system-images
           key: cloud-phone-emulator-v4-android9
 
+      - name: Upload phone logs (diagnostics)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-phone-logs-${{ inputs.phone_id }}-${{ github.run_id }}
+          path: |
+            .phone-vm/emulator.log
+            .phone-vm/viewer.log
+            .phone-vm/vnc.log
+            .phone-vm/setup-skip.log
+          retention-days: 3
+          if-no-files-found: ignore
+
       - name: Publish phone info (private backup channel)
         uses: actions/upload-artifact@v4
         with:

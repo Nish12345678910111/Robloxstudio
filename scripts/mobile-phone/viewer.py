@@ -50,8 +50,8 @@ def run_dump_pipeline():
 
 PASSWORD = os.getenv("PHONE_PASSWORD", "")
 SERIAL = os.environ.get("ADB_SERIAL", "127.0.0.1:5555")
-DW, DH = 540, 960           # device pixels (tap mapping)
-SW, SH = 432, 768           # stream pixels (light = fast frames)
+DW, DH = 432, 768           # device pixels (tap mapping)
+SW, SH = 432, 768           # stream pixels (= device, no scaling cost)
 TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest() if PASSWORD else ""
 
 latest = {"jpg": None, "t": 0.0}
@@ -114,7 +114,8 @@ def run_pipeline():
                 ["ffmpeg", "-hide_banner", "-loglevel", "error",
                  "-fflags", "nobuffer", "-flags", "low_delay",
                  "-probesize", "32768", "-analyzeduration", "0",
-                 "-i", "pipe:0", "-vf", "fps=15", "-q:v", "7",
+                 "-use_wallclock_as_timestamps", "1",
+                 "-i", "pipe:0", "-q:v", "7", "-r", "20",
                  "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"],
                 stdin=rec.stdout, stdout=subprocess.PIPE)
             rec.stdout.close()
@@ -200,7 +201,7 @@ let down=null; const img=$('#scr');
 const pos=e=>{const r=img.getBoundingClientRect(),ia=432/768,ea=r.width/r.height;let w,h,x0,y0;
  if(ea>ia){h=r.height;w=h*ia;x0=r.left+(r.width-w)/2;y0=r.top;}else{w=r.width;h=w/ia;x0=r.left;y0=r.top+(r.height-h)/2;}
  const cx=Math.min(Math.max(e.clientX-x0,0),w),cy=Math.min(Math.max(e.clientY-y0,0),h);
- return{x:Math.round(cx/w*540),y:Math.round(cy/h*960)}};
+ return{x:Math.round(cx/w*432),y:Math.round(cy/h*768)}};
 img.addEventListener('pointerdown',e=>{e.preventDefault();down=pos(e);try{img.setPointerCapture(e.pointerId)}catch(_){}});
 img.addEventListener('pointerup',e=>{e.preventDefault();if(!down)return;const u=pos(e);
  if(Math.abs(u.x-down.x)<34&&Math.abs(u.y-down.y)<34) post('/tap',down); else post('/swipe',{x1:down.x,y1:down.y,x2:u.x,y2:u.y,duration:260}); down=null;});
