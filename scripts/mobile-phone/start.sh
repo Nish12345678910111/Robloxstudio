@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  NishCloudPhone - Android 11 in the official Android Emulator (NO QEMU).
+#  NishCloudPhone - Android 9 in the official Android Emulator (NO QEMU).
 #  Speed design: the viewer + tunnel + saved Url/Password go live FIRST
 #  (seconds), the SDK/emulator setup happens after, and the phone boots
 #  behind an already-working screen page.
@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SESSION_MINUTES="${SESSION_MINUTES:-300}"
-EDITION="android11"
+EDITION="android9"
 echo ">>> Android edition: $EDITION"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,6 +17,11 @@ cd "$WORKDIR_PHONE"
 # bin is on PATH from the very start: the ffmpeg binary can land here later
 # and the already-running viewer will still find it (lookup happens per call).
 export PATH="$WORKDIR_PHONE/bin:$PATH"
+# Resolve the SDK location NOW (no installs yet) so the viewer launched
+# below inherits a PATH that actually contains adb - without this it
+# could not capture a single frame and users sat on "Connecting..." forever.
+SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
 
 # Viewer password (name kept for compatibility with the workflow env).
 if [ -z "${VNC_PASSWORD:-}" ]; then
@@ -67,7 +72,7 @@ fi
 echo "Cloud phone created."
 
 # ------------------------------------------------------ emulator setup ------
-echo ">>> Starting Android 11 phone..."
+echo ">>> Starting Android 9 phone..."
 # Fast path: CI runners ship Java + Android SDK preinstalled - use them and
 # skip every big download. Only fall back to a private SDK when missing.
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
@@ -84,13 +89,13 @@ fi
 AVD_HOME_DIR="$WORKDIR_PHONE/avd"; mkdir -p "$AVD_HOME_DIR"
 export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
 export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
-IMG_PKG="system-images;android-30;google_apis;x86_64"
+IMG_PKG="system-images;android-28;google_apis;x86_64"
 # Licenses + installs ONLY when something is actually missing (cache hits
 # skip all of this - no more sdkmanager noise/time on the fast path).
-if [ ! -x "$SDK/emulator/emulator" ] || [ ! -d "$SDK/system-images/android-30/google_apis/x86_64" ]; then
+if [ ! -x "$SDK/emulator/emulator" ] || [ ! -d "$SDK/system-images/android-28/google_apis/x86_64" ]; then
   yes | sdkmanager --licenses >/dev/null 2>&1 || true
   [ -x "$SDK/emulator/emulator" ] || sdkmanager "emulator" "platform-tools" >/dev/null
-  [ -d "$SDK/system-images/android-30/google_apis/x86_64" ] || sdkmanager "$IMG_PKG" >/dev/null
+  [ -d "$SDK/system-images/android-28/google_apis/x86_64" ] || sdkmanager "$IMG_PKG" >/dev/null
 fi
 if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \

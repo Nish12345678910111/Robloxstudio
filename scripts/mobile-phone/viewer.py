@@ -9,7 +9,7 @@ over ADB: tap / swipe / keys / typed text / paste.
 Env: VIEWER_PORT (8081), PHONE_PASSWORD (gate + API key), ADB_SERIAL.
 Only stdlib + adb + ffmpeg are used.
 """
-import hashlib, hmac, json, os, select, subprocess, threading, time
+import hashlib, hmac, json, os, select, shutil, subprocess, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("VIEWER_PORT", "8081"))
@@ -18,7 +18,7 @@ _last_wake = [0.0]
 def grab_screencap():
     """Rescue frame straight from the emulator via ADB screencap -> JPEG."""
     try:
-        r = subprocess.run(["adb", "-s", SERIAL, "exec-out", "screencap", "-p"],
+        r = subprocess.run([ADB, "-s", SERIAL, "exec-out", "screencap", "-p"],
                            capture_output=True, timeout=15)
         if not r.stdout or len(r.stdout) < 2000:
             return
@@ -57,9 +57,10 @@ TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest() if PASSWORD else ""
 latest = {"jpg": None, "t": 0.0}
 lock = threading.Lock()
 
+ADB = shutil.which("adb") or next((p for p in ("/usr/local/lib/android/sdk/platform-tools/adb", os.path.expanduser("~/Android/Sdk/platform-tools/adb")) if os.path.exists(p)), "adb")
 def adb(*args, timeout=15):
     try:
-        return subprocess.run(["adb", "-s", SERIAL, *args],
+        return subprocess.run([ADB, "-s", SERIAL, *args],
                               capture_output=True, text=True, timeout=timeout)
     except Exception as e:
         print("adb error:", e, flush=True)
@@ -77,7 +78,7 @@ def run_pipeline():
         try:
             if ":" in SERIAL: adb("connect", SERIAL, timeout=10)
             rec = subprocess.Popen(
-                ["adb", "-s", SERIAL, "exec-out", "screenrecord",
+                [ADB, "-s", SERIAL, "exec-out", "screenrecord",
                  "--output-format=h264", f"--size={SW}x{SH}",
                  "--bit-rate=1400000", "--time-limit=180", "-"],
                 stdout=subprocess.PIPE)
@@ -155,7 +156,7 @@ if(window.__EMBED){startScreen();}
 function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr'); const k=window.__TOK||'';
  if(window.__FB){ const gs=$('#gateSub'); if(gs&&!window.__EMBED) gs.textContent='Fallback screen - enter the phone password'; // snapshot polling: works even if the live stream is stuck
    const tick=()=>{const i=new Image(); i.onload=()=>{img.src=i.src;$('#wait').style.display='none'; setTimeout(tick,450);}; i.onerror=()=>setTimeout(tick,1200); i.src='/frame.jpg?t='+k+'&x='+Date.now();}; tick(); return;}
- const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; boot(); img.onerror=()=>setTimeout(boot,2000);
+ const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; img.onload=()=>{$('#wait').style.display='none';}; boot(); img.onerror=()=>setTimeout(boot,2000);
  const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
