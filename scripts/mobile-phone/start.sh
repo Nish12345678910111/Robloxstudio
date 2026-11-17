@@ -33,7 +33,7 @@ SERIAL="emulator-5554"
 # noVNC fallback stack (virtual display + VNC + web bridge) installs in
 # the BACKGROUND - startup speed is untouched; the fallback screen simply
 # comes online a little after the main screen.
-( sudo -n apt-get update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify >/dev/null 2>&1 ) &
+( sudo -n apt-get update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 >/dev/null 2>&1 ) &
 # ffmpeg as ONE static binary in the background (never blocks startup).
 if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x "$WORKDIR_PHONE/bin/ffmpeg" ]; then
   ( curl -fsSL --retry 3 -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
@@ -105,7 +105,7 @@ if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
     || echo no | avdmanager create avd -n phone -k "$IMG_PKG" --force >/dev/null
   CFG="$AVD_HOME_DIR/phone.avd/config.ini"
-  sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=540/; s/^hw.lcd.height=.*/hw.lcd.height=960/; s/^hw.lcd.density=.*/hw.lcd.density=240/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
+  sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=432/; s/^hw.lcd.height=.*/hw.lcd.height=768/; s/^hw.lcd.density=.*/hw.lcd.density=200/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
 fi
 # If the noVNC stack arrived in time, run the emulator WINDOWED on a
 # virtual display so x11vnc can serve it as the fallback screen. If not,
@@ -119,7 +119,7 @@ WIN_ARGS=(-no-window)
 if [ "$USE_VNC" = "1" ]; then
   Xvfb :99 -screen 0 1000x1400x24 > xvfb.log 2>&1 &
   echo $! > xvfb.pid
-  export DISPLAY=:99
+  export DISPLAY=:99 QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
   sleep 2
   WIN_ARGS=()
 fi
@@ -156,8 +156,8 @@ adb start-server >/dev/null 2>&1 || true
   for pkg in com.google.android.setupwizard com.android.setupwizard; do
     $S pm disable-user --user 0 "$pkg" >/dev/null 2>&1 || true
   done
-  $S wm size 540x960 >/dev/null 2>&1 || true
-  $S wm density 240 >/dev/null 2>&1 || true
+  $S wm size 432x768 >/dev/null 2>&1 || true
+  $S wm density 200 >/dev/null 2>&1 || true
   $S settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
   $S settings put system screen_off_timeout 2147483647 >/dev/null 2>&1 || true
   $S svc power stayon true >/dev/null 2>&1 || true
