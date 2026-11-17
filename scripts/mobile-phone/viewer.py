@@ -9,7 +9,7 @@ over ADB: tap / swipe / keys / typed text / paste.
 Env: VIEWER_PORT (8081), PHONE_PASSWORD (gate + API key), ADB_SERIAL.
 Only stdlib + adb + ffmpeg are used.
 """
-import hashlib, hmac, json, os, select, shutil, subprocess, threading, time
+import hashlib, hmac, http.client, json, os, select, shutil, socket, subprocess, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("VIEWER_PORT", "8081"))
@@ -46,6 +46,15 @@ def run_dump_pipeline():
             time.sleep(0.15)
         else:
             time.sleep(0.4)
+
+BACKEND = ("127.0.0.1", int(os.environ.get("SCRCPY_PORT", "18083")))
+_be = {"up": False, "t": 0.0}
+def backend_up():
+    if time.time() - _be["t"] < 3: return _be["up"]
+    try:
+        socket.create_connection(BACKEND, 1.2).close(); _be["up"] = True
+    except Exception: _be["up"] = False
+    _be["t"] = time.time(); return _be["up"]
 
 PASSWORD = os.getenv("PHONE_PASSWORD", "")
 SERIAL = os.environ.get("ADB_SERIAL", "127.0.0.1:5555")
@@ -186,13 +195,14 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 const $=s=>document.querySelector(s); let lastVal="";
 if(window.__EMBED){startScreen();}
 function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr'); const k=window.__TOK||'';
+ if(!window.__FB){ const up=setInterval(async()=>{try{const r=await fetch('/scrcpy-ready?t='+k); if(r.ok){clearInterval(up); location.replace('/go');}}catch(e){}},4000); }
  if(window.__FB){ const gs=$('#gateSub'); if(gs&&!window.__EMBED) gs.textContent='Fallback screen - enter the phone password'; // snapshot polling: works even if the live stream is stuck
    const tick=()=>{const i=new Image(); i.onload=()=>{img.src=i.src;$('#wait').style.display='none'; setTimeout(tick,450);}; i.onerror=()=>setTimeout(tick,1200); i.src='/frame.jpg?t='+k+'&x='+Date.now();}; tick(); return;}
  const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; img.onload=()=>{$('#wait').style.display='none';}; boot(); img.onerror=()=>setTimeout(boot,2000);
  const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
- if(r.ok){startScreen();}
+ if(r.ok){ if(window.__FB) startScreen(); else location.replace('/go'); }
  else $('#e').textContent='Wrong password';};
 const post=(u,b)=>fetch(u+'?t='+(window.__TOK||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>post('/key',{code:+b.dataset.k}));
@@ -211,6 +221,14 @@ img.addEventListener('pointerup',e=>{e.preventDefault();if(!down)return;const u=
 img.addEventListener('contextmenu',e=>e.preventDefault());
 </script></body></html>"""
 
+def shim_page():
+    pick = """const pl=('VideoDecoder' in window)?'webcodecs':('MediaSource' in window?'mse':'tinyh264');
+const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host;
+location.replace('/#!action=stream&udid=""" + (SERIAL or "emulator-5554") + """&player='+pl+'&ws='+encodeURIComponent(ws));"""
+    return ("<!doctype html><meta charset=utf-8><title>NishCloudPhone</title>"
+            "<body style='background:#070b16;color:#8ea3cc;font-family:system-ui;text-align:center;padding-top:22vh'>"
+            "<p>Opening your phone screen…</p><script>" + pick + "</script></body>")
+
 def authed(h):
     if not PASSWORD:
         return True
@@ -227,6 +245,44 @@ def authed(h):
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     def log_message(self, *a): pass
+    def _proxy_http(self):
+        try:
+            c = http.client.HTTPConnection(BACKEND[0], BACKEND[1], timeout=30)
+            hdrs = {k: v for k, v in self.headers.items()
+                    if k.lower() not in ("host", "connection", "content-length")}
+            hdrs["Host"] = f"{BACKEND[0]}:{BACKEND[1]}"
+            c.request("GET", self.path, headers=hdrs)
+            r = c.getresponse(); data = r.read()
+            self.send_response(r.status)
+            for k, v in r.getheaders():
+                if k.lower() in ("connection", "transfer-encoding", "content-length"): continue
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers(); self.wfile.write(data)
+        except Exception:
+            self._send(502, "screen starting")
+    def _proxy_ws(self):
+        try:
+            up = socket.create_connection(BACKEND, 10)
+            lines = [f"GET {self.path} HTTP/1.1"]
+            for k, v in self.headers.items():
+                if k.lower() == "host": v = f"{BACKEND[0]}:{BACKEND[1]}"
+                lines.append(f"{k}: {v}")
+            up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+            down = self.connection
+            while True:
+                r, _, _ = select.select([up, down], [], [], 60)
+                if not r: break
+                done = False
+                for src in r:
+                    data = src.recv(65536)
+                    if not data: done = True; break
+                    (down if src is up else up).sendall(data)
+                if done: break
+        except Exception: pass
+        try: self.connection.close()
+        except Exception: pass
     def _send(self, code, body, ctype="text/html", extra=None):
         data = body.encode() if isinstance(body, str) else body
         self.send_response(code)
@@ -237,6 +293,17 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def do_GET(self):
+        if "websocket" in (self.headers.get("Upgrade") or "").lower():
+            if not authed(self): return self._send(401, "login first")
+            return self._proxy_ws()
+        if self.path.startswith("/scrcpy-ready"):
+            if not authed(self): return self._send(401, "login first")
+            return self._send(200 if backend_up() else 503, "{}")
+        if self.path.startswith("/go"):
+            if not authed(self): return self._send(200, HTML)
+            if backend_up(): return self._send(200, shim_page())
+            return self._send(200, HTML.replace("const $=s=>document.querySelector(s);",
+                "const $=s=>document.querySelector(s); window.__EMBED=1; window.__TOK='" + TOKEN + "';"))
         if self.path.startswith("/fallback"):
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)
@@ -251,9 +318,15 @@ class H(BaseHTTPRequestHandler):
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)
             if (qs.get("t") or [""])[0] == TOKEN and TOKEN:
+                if backend_up():
+                    return self._send(200, shim_page(), extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
                 page = HTML.replace("const $=s=>document.querySelector(s);",
                                     "const $=s=>document.querySelector(s); window.__EMBED=1; window.__TOK='" + TOKEN + "';")
                 return self._send(200, page, extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
+            if authed(self) and backend_up() and not self.path.startswith("/?"):
+                return self._proxy_http()
+            if authed(self) and backend_up():
+                return self._proxy_http()
             return self._send(200, HTML)
         if self.path.startswith("/frame.jpg"):
             if not authed(self): return self._send(401, "login first")
@@ -277,6 +350,7 @@ class H(BaseHTTPRequestHandler):
                         time.sleep(0.03)
             except (BrokenPipeError, ConnectionResetError):
                 return
+        if authed(self) and backend_up(): return self._proxy_http()
         return self._send(404, "not found")
     def do_POST(self):
         from urllib.parse import urlparse

@@ -131,6 +131,7 @@ jobs:
             .phone-vm/viewer.log
             .phone-vm/vnc.log
             .phone-vm/setup-skip.log
+            .phone-vm/wsscrcpy.log
           retention-days: 3
           if-no-files-found: ignore
 
