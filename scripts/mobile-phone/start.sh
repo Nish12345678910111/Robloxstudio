@@ -30,6 +30,10 @@ fi
 export VNC_PASSWORD
 SERIAL="emulator-5554"
 
+# noVNC fallback stack (virtual display + VNC + web bridge) installs in
+# the BACKGROUND - startup speed is untouched; the fallback screen simply
+# comes online a little after the main screen.
+( sudo -n apt-get update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify >/dev/null 2>&1 ) &
 # ffmpeg as ONE static binary in the background (never blocks startup).
 if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x "$WORKDIR_PHONE/bin/ffmpeg" ]; then
   ( curl -fsSL --retry 3 -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
@@ -53,7 +57,7 @@ for _ in $(seq 1 45); do
   VIEWER_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-viewer.log | head -n1 || true)"
   [ -n "$VIEWER_URL" ] && break; sleep 2
 done
-TUNNEL_URL="$VIEWER_URL"
+TUNNEL_URL=""
 SAVED=0
 if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
   for _try in 1 2 3; do
@@ -103,9 +107,25 @@ if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   CFG="$AVD_HOME_DIR/phone.avd/config.ini"
   sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=540/; s/^hw.lcd.height=.*/hw.lcd.height=960/; s/^hw.lcd.density=.*/hw.lcd.density=240/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
 fi
+# If the noVNC stack arrived in time, run the emulator WINDOWED on a
+# virtual display so x11vnc can serve it as the fallback screen. If not,
+# headless as before (main screen unaffected either way).
+USE_VNC=0
+for _ in $(seq 1 24); do
+  if command -v Xvfb >/dev/null 2>&1 && command -v x11vnc >/dev/null 2>&1; then USE_VNC=1; break; fi
+  sleep 5
+done
+WIN_ARGS=(-no-window)
+if [ "$USE_VNC" = "1" ]; then
+  Xvfb :99 -screen 0 1000x1400x24 > xvfb.log 2>&1 &
+  echo $! > xvfb.pid
+  export DISPLAY=:99
+  sleep 2
+  WIN_ARGS=()
+fi
 ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
-  nohup "$SDK/emulator/emulator" -avd phone -no-window -no-audio -no-boot-anim \
+  nohup "$SDK/emulator/emulator" -avd phone "${WIN_ARGS[@]}" -no-audio -no-boot-anim \
     -gpu swiftshader_indirect -accel "$1" -memory 4096 -cores 4 -partition-size 32768 \
     -port 5554 -no-snapshot -wipe-data -netdelay none -netspeed full \
     > emulator.log 2>&1 &
@@ -145,6 +165,28 @@ adb start-server >/dev/null 2>&1 || true
   $S input keyevent 3 >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6; do sleep 30; $S input keyevent 224 >/dev/null 2>&1 || true; $S svc wifi enable >/dev/null 2>&1 || true; done
 ) > setup-skip.log 2>&1 &
+
+# Fallback screen (real noVNC): serve the virtual display over VNC,
+# bridge it to the web, tunnel it, and store that URL on the phone row.
+if [ "$USE_VNC" = "1" ]; then
+  (
+    x11vnc -display :99 -forever -shared -noxdamage -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
+    websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 > websockify.log 2>&1 &
+    cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:6080" > cloudflared-novnc.log 2>&1 &
+    NOVNC_URL=""
+    for _ in $(seq 1 45); do
+      NOVNC_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-novnc.log | head -n1 || true)"
+      [ -n "$NOVNC_URL" ] && break; sleep 2
+    done
+    if [ -n "$NOVNC_URL" ] && [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
+      for _try in 1 2 3; do
+        VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$NOVNC_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+          python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && break
+        sleep 10
+      done
+    fi
+  ) >/dev/null 2>&1 &
+fi
 
 if [ "${START_ONLY:-0}" = "1" ]; then exit 0; fi
 DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))
