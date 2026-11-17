@@ -12,13 +12,22 @@ function PhoneCard({ p, user, onStop, onDelete }) {
   useEffect(() => { let on = true; embedUrl(p).then(u => { if (on) setFrameUrl(u); }); return () => { on = false; }; }, [p.viewerUrl, p.password]);
   const screenUrl = frameUrl;
   const live = p.status === "in_progress" && screenUrl;
-  const state = live ? "● LIVE" : p.status === "busy" ? "⏳ Busy — try again later" : (p.status === "starting" || p.status === "in_progress") ? "🚀 Starting…" : p.status === "queued" ? "Queued" : p.conclusion === "cancelled" ? "Stopped" : p.conclusion || p.status;
+  // A finished phone (its ~6h session ended, it errored, or it was stopped)
+  // must say so - never sit on "starting…" with the timer counting forever.
+  const finished = p.status === "completed" || !!p.conclusion;
+  const failed = ["failure", "timed_out", "startup_failure", "action_required"].includes(p.conclusion);
+  const ranMs = finished && p.createdAt && p.updatedAt ? new Date(p.updatedAt).getTime() - new Date(p.createdAt).getTime() : 0;
+  const ranSixH = ranMs >= 5.5 * 3600 * 1000;
+  const state = live ? "● LIVE" : p.status === "busy" ? "⏳ Busy — try again later" : finished ? (failed ? "⚠️ Error" : "⏹ Stopped") : (p.status === "starting" || p.status === "in_progress") ? "🚀 Starting…" : p.status === "queued" ? "Queued" : p.status;
   const boxRef = useRef(null);
   const [isFs, setIsFs] = useState(false);
   const [nowS, setNowS] = useState(() => Date.now());
   useEffect(() => { if (live) return; const i = setInterval(() => setNowS(Date.now()), 1000); return () => clearInterval(i); }, [live]);
   const elapsed = p.createdAt ? Math.max(0, Math.floor((nowS - new Date(p.createdAt).getTime()) / 1000)) : 0;
-  const elapsedTxt = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  const elapsedTxt = elapsed >= 3600
+    ? `${Math.floor(elapsed / 3600)}:${String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`
+    : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  const startingTooLong = !finished && !live && elapsed > 600; // >10 min: something went wrong
   useEffect(() => {
     const on = () => setIsFs(document.fullscreenElement === boxRef.current);
     document.addEventListener("fullscreenchange", on);
@@ -41,7 +50,10 @@ function PhoneCard({ p, user, onStop, onDelete }) {
       <button className="fsBtn" onClick={toggleFs}>{isFs ? "✕ Exit full screen" : "⛶ Full screen"}</button>
       <div className="phoneBox">
         {live ? <iframe src={screenUrl} title={"Cloud Phone " + p.phoneId} allow="fullscreen; clipboard-read; clipboard-write" /> :
-          <div className="phoneWait"><div className="spin" /><p>{p.status === "busy" ? "Many users are using free cloud phones, try again later." : "Cloud phone starting…\nYour screen will appear here"}</p>
+          finished ? <div className="phoneWait"><div style={{ fontSize: 42 }}>{failed ? "⚠️" : "⏹"}</div>
+            <p>{failed ? "The cloud phone had an error." : "Cloud phone stopped"}</p>
+            <p className="eta">{failed ? "Something went wrong with this cloud phone. Delete it and start a new one." : ranSixH ? "6 hours passed — the max session ended.\nDelete it and start a new cloud phone." : "This session has ended. Delete it and start a new cloud phone."}</p></div> :
+          <div className="phoneWait"><div className="spin" /><p>{p.status === "busy" ? "Many users are using free cloud phones, try again later." : startingTooLong ? "The cloud phone had an error.\nIt is taking too long to start — delete it and start a new one." : "Cloud phone starting…\nYour screen will appear here"}</p>
           {p.status !== "busy" && <p className="eta">⏱ {elapsedTxt} elapsed<br />⚡ average start time: ~1:30</p>}</div>}
       </div>
     </div>
