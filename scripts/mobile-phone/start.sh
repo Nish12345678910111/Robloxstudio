@@ -144,6 +144,24 @@ if ! emu_alive && [ "$ACCEL" = "on" ]; then
   ACCEL="off"; WIN_ARGS=(-no-window); USE_VNC=0; launch_emu off; sleep 8
 fi
 adb start-server >/dev/null 2>&1 || true
+# ws-scrcpy (DEFAULT screen): build in background while the phone boots;
+# viewer.py serves the old fast screen until it answers, then upgrades.
+(
+  cd "$WORKDIR_PHONE" || exit 0
+  command -v node >/dev/null 2>&1 || exit 0
+  [ -d wss ] || git clone -q --depth 1 --branch v0.8.1 https://github.com/NetrisTV/ws-scrcpy.git wss >> wsscrcpy.log 2>&1 || exit 0
+  cd wss || exit 0
+  cat > build.config.override.json <<'CFG'
+{"INCLUDE_APPL":false,"INCLUDE_GOOG":true,"INCLUDE_ADB_SHELL":false,"INCLUDE_DEV_TOOLS":false,"INCLUDE_FILE_LISTING":false,"USE_BROADWAY":true,"USE_H264_CONVERTER":true,"USE_TINY_H264":true,"USE_WEBCODECS":true,"USE_WDA_MJPEG_SERVER":false,"USE_QVH_SERVER":false}
+CFG
+  [ -d node_modules ] || npm install --ignore-scripts --no-audit --no-fund >> ../wsscrcpy.log 2>&1
+  [ -f dist/index.js ] || npm run dist >> ../wsscrcpy.log 2>&1
+  printf 'server:\n  - secure: false\n    port: 18083\n' > ../wss.yaml
+  cd dist && WS_SCRCPY_CONFIG="$WORKDIR_PHONE/wss.yaml" PATH="$PATH" node index.js >> ../../wsscrcpy.log 2>&1 &
+  echo $! > ../../wsscrcpy.pid
+) >/dev/null 2>&1 &
+# soft keyboard must actually open when a text field is tapped
+sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 2>/dev/null || true
 (
   for _ in $(seq 1 120); do
     BOOTED="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
@@ -166,6 +184,7 @@ adb start-server >/dev/null 2>&1 || true
   $S svc wifi enable >/dev/null 2>&1 || true
   HOME_COMP="$($S cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null | tr -d '\r' | tail -n1 || true)"
   [ -n "$HOME_COMP" ] && $S cmd package set-home-activity "$HOME_COMP" >/dev/null 2>&1 || true
+  $S settings put secure show_ime_with_hard_keyboard 1 >/dev/null 2>&1 || true
   $S wm dismiss-keyguard >/dev/null 2>&1 || true
   $S input keyevent 3 >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6; do sleep 30; $S input keyevent 224 >/dev/null 2>&1 || true; $S svc wifi enable >/dev/null 2>&1 || true; done
