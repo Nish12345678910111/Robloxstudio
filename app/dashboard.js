@@ -84,7 +84,11 @@ export default function Dashboard({ user, tokenReady }) {
   }, [pushToast]);
   const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem("ncp_hidden") || "[]")); } catch { return new Set(); } });
   const load = useCallback(async () => { const r = await fetch("/api/phones"); if (r.ok) { const d = await r.json(); setPhones(d.phones || []); setNotice(d.notice || null); } }, []);
-  useEffect(() => { load(); const i = setInterval(() => { if (!document.hidden) load(); }, 20000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { load(); }, [load]);
+  // Poll fast (6s) while anything is starting/running so state changes -
+  // especially errors - appear almost instantly; slow (20s) when idle.
+  useEffect(() => { const active = phones.some(x => !x.conclusion && x.status !== "completed");
+    const i = setInterval(() => { if (!document.hidden) load(); }, active ? 6000 : 20000); return () => clearInterval(i); }, [load, phones]);
   async function create() {
     if (creating) return;
     setCreating(true); setMsg("");
