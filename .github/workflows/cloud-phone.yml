@@ -138,8 +138,11 @@ jobs:
           DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
             if [ -f .phone-vm/emulator.pid ] && ! kill -0 "$(cat .phone-vm/emulator.pid)" 2>/dev/null; then
-              echo "phone stopped"; exit 1
-            fi
-            sleep 60
+              DEAD=$(( ${DEAD:-0} + 1 ))
+              # 3 consecutive dead checks (~45s) before declaring it gone -
+              # a slow-starting phone must never be reported as an error.
+              if [ "$DEAD" -ge 3 ]; then echo "phone stopped"; exit 1; fi
+            else DEAD=0; fi
+            sleep 15
           done
           echo "Session over."

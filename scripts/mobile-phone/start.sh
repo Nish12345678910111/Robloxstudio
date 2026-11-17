@@ -131,12 +131,17 @@ launch_emu() {
     > emulator.log 2>&1 &
   echo $! > emulator.pid
 }
-launch_emu "$ACCEL"
-sleep 12
-if ! kill -0 "$(cat emulator.pid)" 2>/dev/null && [ "$ACCEL" = "on" ]; then
-  # Hardware accel refused to start on this runner - retry in software mode
-  # so the phone (and its screen) still comes up instead of a black box.
-  ACCEL="off"; launch_emu off; sleep 5
+# Launch with VERIFIED fallbacks: a windowed (noVNC) launch can crash on
+# some runners - if the process is not alive after a few seconds, fall
+# back to headless, then to software acceleration. Never exit the start
+# step leaving a dead pid behind for the keep-alive to trip over.
+emu_alive() { [ -f emulator.pid ] && kill -0 "$(cat emulator.pid)" 2>/dev/null; }
+launch_emu "$ACCEL"; sleep 12
+if ! emu_alive && [ "$USE_VNC" = "1" ]; then
+  USE_VNC=0; WIN_ARGS=(-no-window); launch_emu "$ACCEL"; sleep 10
+fi
+if ! emu_alive && [ "$ACCEL" = "on" ]; then
+  ACCEL="off"; WIN_ARGS=(-no-window); USE_VNC=0; launch_emu off; sleep 8
 fi
 adb start-server >/dev/null 2>&1 || true
 (
