@@ -27,8 +27,7 @@ def grab_screencap():
                             "-vcodec", "mjpeg", "pipe:1"],
                            input=r.stdout, capture_output=True, timeout=15)
         if c.stdout and len(c.stdout) > 2000:
-            with lock:
-                latest["jpg"], latest["t"] = c.stdout, time.time()
+            store_frame(c.stdout)
     except Exception as e:
         print("screencap error:", e, flush=True)
 
@@ -56,6 +55,11 @@ TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest() if PASSWORD else ""
 
 latest = {"jpg": None, "t": 0.0}
 lock = threading.Lock()
+_ready = {"v": False}
+def store_frame(data):
+    if len(data) > 7000: _ready["v"] = True
+    if not _ready["v"]: return  # still booting: keep the loading screen
+    with lock: latest["jpg"], latest["t"] = data, time.time()
 
 ADB = shutil.which("adb") or next((p for p in ("/usr/local/lib/android/sdk/platform-tools/adb", os.path.expanduser("~/Android/Sdk/platform-tools/adb")) if os.path.exists(p)), "adb")
 class InputShell:
@@ -137,8 +141,7 @@ def run_pipeline():
                     b = buf.find(b"\xff\xd9", a + 2) if a >= 0 else -1
                     if a < 0 or b < 0: break
                     frame = buf[a:b + 2]; buf = buf[b + 2:]
-                    with lock:
-                        latest["jpg"], latest["t"] = frame, time.time()
+                    store_frame(frame)
                     last_frame = time.time()
                 if len(buf) > 4_000_000: buf = b""
         except Exception as e:
@@ -170,7 +173,7 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 <div id="app" style="display:none">
  <div id="wait" style="position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#070b16;z-index:5">
  <div style="width:42px;height:42px;border-radius:50%;border:4px solid #22335e;border-top-color:#4f7cff;animation:sp .9s linear infinite"></div>
- <p style="color:#8ea3cc">Connecting to your phone screen…</p></div>
+ <p style="color:#8ea3cc">Connecting to your phone screen…</p><p style="color:#5f729e;font-size:13px;padding:0 26px">The phone is booting — the live screen pops in by itself in about a minute. Don't close this page.</p></div>
  <style>@keyframes sp{to{transform:rotate(360deg)}}</style>
  <div id="bar">
   <button data-k="187">◁ Back</button><button data-k="3">● Home</button><button data-k="187" id="rec" data-k2="82">▤ Apps</button>
