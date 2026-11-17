@@ -138,6 +138,9 @@ launch_emu() {
 emu_alive() { [ -f emulator.pid ] && kill -0 "$(cat emulator.pid)" 2>/dev/null; }
 launch_emu "$ACCEL"; sleep 12
 if ! emu_alive && [ "$USE_VNC" = "1" ]; then
+  launch_emu "$ACCEL"; sleep 12  # one retry of the windowed (noVNC) launch
+fi
+if ! emu_alive && [ "$USE_VNC" = "1" ]; then
   USE_VNC=0; WIN_ARGS=(-no-window); launch_emu "$ACCEL"; sleep 10
 fi
 if ! emu_alive && [ "$ACCEL" = "on" ]; then

@@ -9,6 +9,7 @@ async function embedUrl(p) {
 }
 function PhoneCard({ p, user, onStop, onDelete }) {
   const [frameUrl, setFrameUrl] = useState(null);
+  const tok = frameUrl && frameUrl.includes("?t=") ? frameUrl.split("?t=")[1] : null;
   useEffect(() => { let on = true; embedUrl(p).then(u => { if (on) setFrameUrl(u); }); return () => { on = false; }; }, [p.viewerUrl, p.password]);
   const screenUrl = frameUrl;
   const live = p.status === "in_progress" && screenUrl;
@@ -43,7 +44,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
     <header className="cardHead"><div><h3>📱 Cloud Phone · Android 9</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
-      <p><b>Url -</b> {p.viewerUrl ? <a href={p.viewerUrl} target="_blank" rel="noreferrer">{p.viewerUrl}</a> : "waiting for connection…"}</p>
+      <p><b>Url -</b> {p.viewerUrl ? <a href={frameUrl || p.viewerUrl} target="_blank" rel="noreferrer">{p.viewerUrl}</a> : "waiting for connection…"}</p>
       <p><b>Password -</b> {p.password ? <code>{p.password}</code> : "•••••••• (appears when initialized)"}</p>
     </div>
     <div className="phoneWrap" ref={boxRef}>
@@ -58,7 +59,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
       </div>
     </div>
     <footer className="cardFoot">
-      <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.tunnelUrl ? <a href={p.tunnelUrl + "/vnc.html?autoconnect=true&resize=scale"} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : p.viewerUrl ? <a href={p.viewerUrl + "/fallback"} target="_blank" rel="noreferrer">Fallback screen ↗</a> : null}</span>
+      <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.viewerUrl ? <a href={p.viewerUrl + "/vnc/vnc.html?autoconnect=true&resize=scale" + (tok ? "&t=" + tok : "")} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : null}</span>
       <span className="footBtns">
         {(p.status === "in_progress" || p.status === "queued") && <button className="stop" onClick={() => onStop(p.runId)}>⏹ Stop Cloud Phone</button>}
         <button className="del" onClick={() => onDelete(p)}>🗑 Delete Cloud Phone</button>

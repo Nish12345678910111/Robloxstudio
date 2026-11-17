@@ -48,6 +48,10 @@ def run_dump_pipeline():
             time.sleep(0.4)
 
 BACKEND = ("127.0.0.1", int(os.environ.get("SCRCPY_PORT", "18083")))
+VNC_BACKEND = ("127.0.0.1", 6080)
+def vnc_up():
+    try: socket.create_connection(VNC_BACKEND, 0.8).close(); return True
+    except Exception: return False
 _be = {"up": False, "t": 0.0}
 def backend_up():
     if time.time() - _be["t"] < 3: return _be["up"]
@@ -195,14 +199,14 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 const $=s=>document.querySelector(s); let lastVal="";
 if(window.__EMBED){startScreen();}
 function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr'); const k=window.__TOK||'';
- if(!window.__FB){ const up=setInterval(async()=>{try{const r=await fetch('/scrcpy-ready?t='+k); if(r.ok){clearInterval(up); location.replace('/go');}}catch(e){}},4000); }
+ if(!window.__FB){ const up=setInterval(async()=>{try{const r=await fetch('/scrcpy-ready?t='+k); if(r.ok){clearInterval(up); location.replace('/go?t='+k);}}catch(e){}},4000); }
  if(window.__FB){ const gs=$('#gateSub'); if(gs&&!window.__EMBED) gs.textContent='Fallback screen - enter the phone password'; // snapshot polling: works even if the live stream is stuck
    const tick=()=>{const i=new Image(); i.onload=()=>{img.src=i.src;$('#wait').style.display='none'; setTimeout(tick,450);}; i.onerror=()=>setTimeout(tick,1200); i.src='/frame.jpg?t='+k+'&x='+Date.now();}; tick(); return;}
  const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; img.onload=()=>{$('#wait').style.display='none';}; boot(); img.onerror=()=>setTimeout(boot,2000);
  const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
- if(r.ok){ if(window.__FB) startScreen(); else location.replace('/go'); }
+ if(r.ok){ if(window.__FB) startScreen(); else { const j=await r.json().catch(()=>({})); const tok=j.t||''; const pl=('VideoDecoder' in window)?'webcodecs':('MediaSource' in window?'mse':'tinyh264'); const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/s/'+tok+'/'; location.replace('/s/'+tok+'/#!action=stream&udid=emulator-5554&player='+pl+'&ws='+encodeURIComponent(ws)); } }
  else $('#e').textContent='Wrong password';};
 const post=(u,b)=>fetch(u+'?t='+(window.__TOK||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>post('/key',{code:+b.dataset.k}));
@@ -223,8 +227,9 @@ img.addEventListener('contextmenu',e=>e.preventDefault());
 
 def shim_page():
     pick = """const pl=('VideoDecoder' in window)?'webcodecs':('MediaSource' in window?'mse':'tinyh264');
-const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host;
-location.replace('/#!action=stream&udid=""" + (SERIAL or "emulator-5554") + """&player='+pl+'&ws='+encodeURIComponent(ws));"""
+const base='/s/""" + TOKEN + """';
+const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+base+'/';
+location.replace(base+'/#!action=stream&udid=""" + (SERIAL or "emulator-5554") + """&player='+pl+'&ws='+encodeURIComponent(ws));"""
     return ("<!doctype html><meta charset=utf-8><title>NishCloudPhone</title>"
             "<body style='background:#070b16;color:#8ea3cc;font-family:system-ui;text-align:center;padding-top:22vh'>"
             "<p>Opening your phone screen…</p><script>" + pick + "</script></body>")
@@ -245,13 +250,14 @@ def authed(h):
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     def log_message(self, *a): pass
-    def _proxy_http(self):
+    def _proxy_http(self, backend=None, path=None):
+        backend = backend or BACKEND
         try:
-            c = http.client.HTTPConnection(BACKEND[0], BACKEND[1], timeout=30)
+            c = http.client.HTTPConnection(backend[0], backend[1], timeout=30)
             hdrs = {k: v for k, v in self.headers.items()
                     if k.lower() not in ("host", "connection", "content-length")}
-            hdrs["Host"] = f"{BACKEND[0]}:{BACKEND[1]}"
-            c.request("GET", self.path, headers=hdrs)
+            hdrs["Host"] = f"{backend[0]}:{backend[1]}"
+            c.request("GET", path or self.path, headers=hdrs)
             r = c.getresponse(); data = r.read()
             self.send_response(r.status)
             for k, v in r.getheaders():
@@ -262,12 +268,13 @@ class H(BaseHTTPRequestHandler):
             self.end_headers(); self.wfile.write(data)
         except Exception:
             self._send(502, "screen starting")
-    def _proxy_ws(self):
+    def _proxy_ws(self, backend=None, path=None):
+        backend = backend or BACKEND
         try:
-            up = socket.create_connection(BACKEND, 10)
-            lines = [f"GET {self.path} HTTP/1.1"]
+            up = socket.create_connection(backend, 10)
+            lines = [f"GET {path or self.path} HTTP/1.1"]
             for k, v in self.headers.items():
-                if k.lower() == "host": v = f"{BACKEND[0]}:{BACKEND[1]}"
+                if k.lower() == "host": v = f"{backend[0]}:{backend[1]}"
                 lines.append(f"{k}: {v}")
             up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
             down = self.connection
@@ -293,6 +300,26 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def do_GET(self):
+        # token-in-path session: /s/<token>/... (cookie-proof)
+        if self.path.startswith("/s/") and TOKEN:
+            rest = self.path[3:]
+            tok, _, tail = rest.partition("/")
+            if hmac.compare_digest(tok, TOKEN):
+                sub = "/" + tail
+                if "websocket" in (self.headers.get("Upgrade") or "").lower():
+                    return self._proxy_ws(path=sub)
+                return self._proxy_http(path=sub)
+            return self._send(401, "login first")
+        if self.path.startswith("/vnc/") or self.path == "/vnc":
+            if not authed(self): return self._send(200, HTML)
+            sub = self.path[4:] or "/vnc.html"
+            if "websocket" in (self.headers.get("Upgrade") or "").lower():
+                return self._proxy_ws(backend=VNC_BACKEND, path=sub)
+            if not vnc_up():
+                page = HTML.replace("const $=s=>document.querySelector(s);",
+                    "const $=s=>document.querySelector(s); window.__FB=1; window.__EMBED=1; window.__TOK='" + TOKEN + "';")
+                return self._send(200, page)
+            return self._proxy_http(backend=VNC_BACKEND, path=sub)
         if "websocket" in (self.headers.get("Upgrade") or "").lower():
             if not authed(self): return self._send(401, "login first")
             return self._proxy_ws()
@@ -362,8 +389,8 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/login":
             ok = hmac.compare_digest(str(body.get("password", "")), PASSWORD) if PASSWORD else True
             if not ok: return self._send(401, json.dumps({"error": "wrong password"}), "application/json")
-            return self._send(200, "{}", "application/json",
-                              {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400"})
+            return self._send(200, json.dumps({"t": TOKEN}), "application/json",
+                              {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
         if not _authed_first: return self._send(401, "login first")
         if self.path == "/tap":
             ISHELL.send(f"input tap {int(body['x'])} {int(body['y'])}")
