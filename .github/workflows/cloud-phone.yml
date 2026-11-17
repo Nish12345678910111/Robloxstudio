@@ -1,7 +1,7 @@
 name: Cloud Phone
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
-# Android 11 in the official Android Emulator -> own viewer -> random
+# Android 9 in the official Android Emulator -> own viewer -> random
 # tunnel URL + password. The phone's URL/password are stored only in the
 # owner's account database row (via the AIVEN_DATABASE_URL secret). They
 # are never printed in logs, never uploaded, and never committed.
@@ -22,9 +22,9 @@ on:
       edition:
         description: "Android edition"
         required: true
-        default: "android11"
+        default: "android9"
         type: choice
-        options: ["android11"]
+        options: ["android9"]
       session_minutes:
         description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
@@ -96,7 +96,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-          key: cloud-phone-emulator-v3
+          key: cloud-phone-emulator-v4-android9
 
       - name: Start Cloud Phone
         env:
@@ -119,7 +119,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-          key: cloud-phone-emulator-v3
+          key: cloud-phone-emulator-v4-android9
 
       - name: Publish phone info (private backup channel)
         uses: actions/upload-artifact@v4

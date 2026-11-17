@@ -87,7 +87,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "You already have 5 cloud phones. Delete some cloud phones to get a new one.", code: "LIMIT" }, { status: 409 });
     const phoneId = "phone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
     // 1) Save FIRST - the phone card shows instantly as "starting".
-    await createPhoneRow(user.id, phoneId, "android11");
+    await createPhoneRow(user.id, phoneId, "android9");
     // 2) Then start it upstream.
     try { await dispatchPhone(phoneId); }
     catch {
