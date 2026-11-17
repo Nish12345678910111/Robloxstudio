@@ -102,8 +102,13 @@ def run_pipeline():
             if ":" in SERIAL: adb("connect", SERIAL, timeout=10)
             rec = subprocess.Popen(
                 [ADB, "-s", SERIAL, "exec-out", "screenrecord",
-                 "--output-format=h264", f"--size={SW}x{SH}",
-                 "--bit-rate=1400000", "--time-limit=180", "-"],
+                 # NO --output-format: that flag only exists on Android 12+.
+                 # On Android 9 screenrecord rejects it and exits instantly,
+                 # which silently killed the live stream (0 frames, only the
+                 # ~5s rescue screenshots got through). Default output is
+                 # already H.264.
+                 f"--size={SW}x{SH}",
+                 "--bit-rate=1200000", "--time-limit=180", "-"],
                 stdout=subprocess.PIPE)
             ff = subprocess.Popen(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error",
