@@ -206,7 +206,7 @@ function startScreen(){$('#gate').style.display='none';$('#app').style.display='
  const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
- if(r.ok){ if(window.__FB) startScreen(); else { const j=await r.json().catch(()=>({})); const tok=j.t||''; const pl=('VideoDecoder' in window)?'webcodecs':('MediaSource' in window?'mse':'tinyh264'); const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/s/'+tok+'/'; location.replace('/s/'+tok+'/#!action=stream&udid=emulator-5554&player='+pl+'&ws='+encodeURIComponent(ws)); } }
+ if(r.ok){ if(window.__FB) startScreen(); else { if('VideoDecoder' in window && !window.__PL){ try{ const s2=await VideoDecoder.isConfigSupported({codec:'avc1.42E01E',codedWidth:432,codedHeight:768}); window.__PL=(s2&&s2.supported)?'webcodecs':'mse'; }catch(e){ window.__PL='mse'; } } const j=await r.json().catch(()=>({})); const tok=j.t||''; const pl=window.__PL||'mse'; const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/s/'+tok+'/'; location.replace('/s/'+tok+'/#!action=stream&udid=emulator-5554&player='+pl+'&ws='+encodeURIComponent(ws)); } }
  else $('#e').textContent='Wrong password';};
 const post=(u,b)=>fetch(u+'?t='+(window.__TOK||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>post('/key',{code:+b.dataset.k}));
@@ -226,10 +226,12 @@ img.addEventListener('contextmenu',e=>e.preventDefault());
 </script></body></html>"""
 
 def shim_page():
-    pick = """const pl=('VideoDecoder' in window)?'webcodecs':('MediaSource' in window?'mse':'tinyh264');
+    pick = """(async()=>{ let pl='tinyh264';
+if('MediaSource' in window && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"')) pl='mse';
+if('VideoDecoder' in window){ try{ const s=await VideoDecoder.isConfigSupported({codec:'avc1.42E01E',codedWidth:432,codedHeight:768,optimizeForLatency:true}); if(s&&s.supported) pl='webcodecs'; }catch(e){} }
 const base='/s/""" + TOKEN + """';
 const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+base+'/';
-location.replace(base+'/#!action=stream&udid=""" + (SERIAL or "emulator-5554") + """&player='+pl+'&ws='+encodeURIComponent(ws));"""
+location.replace(base+'/#!action=stream&udid=""" + (SERIAL or "emulator-5554") + """&player='+pl+'&ws='+encodeURIComponent(ws)); })();"""
     return ("<!doctype html><meta charset=utf-8><title>NishCloudPhone</title>"
             "<body style='background:#070b16;color:#8ea3cc;font-family:system-ui;text-align:center;padding-top:22vh'>"
             "<p>Opening your phone screen…</p><script>" + pick + "</script></body>")
@@ -318,6 +320,7 @@ class H(BaseHTTPRequestHandler):
             if not vnc_up():
                 page = HTML.replace("const $=s=>document.querySelector(s);",
                     "const $=s=>document.querySelector(s); window.__FB=1; window.__EMBED=1; window.__TOK='" + TOKEN + "';")
+                page = page.replace("</body>", """<script>setInterval(async()=>{try{const r=await fetch(location.pathname+'?t='+window.__TOK); const t=await r.text(); if(t.includes('noVNC')||t.includes('rfb')) location.reload();}catch(e){}},5000);</script></body>""")
                 return self._send(200, page)
             return self._proxy_http(backend=VNC_BACKEND, path=sub)
         if "websocket" in (self.headers.get("Upgrade") or "").lower():

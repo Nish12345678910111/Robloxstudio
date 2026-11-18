@@ -98,6 +98,16 @@ jobs:
             /usr/local/lib/android/sdk/system-images
           key: cloud-phone-emulator-v4-android9
 
+      - name: Install fallback screen stack
+        # Deterministic, in the open: the noVNC fallback kept vanishing
+        # because this stack installed in the background and raced the
+        # emulator launch decision. Installing it here (failure never
+        # blocks the phone) means start.sh always finds it ready.
+        run: |
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool || true
+          command -v Xvfb x11vnc websockify || true
+
       - name: Start Cloud Phone
         env:
           PHONE_ID: ${{ inputs.phone_id }}

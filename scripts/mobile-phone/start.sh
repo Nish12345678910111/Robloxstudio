@@ -137,10 +137,11 @@ fi
 # virtual display so x11vnc can serve it as the fallback screen. If not,
 # headless as before (main screen unaffected either way).
 USE_VNC=0
-for _ in $(seq 1 24); do
+for _ in $(seq 1 36); do
   if command -v Xvfb >/dev/null 2>&1 && command -v x11vnc >/dev/null 2>&1; then USE_VNC=1; break; fi
   sleep 5
 done
+echo ">>> Fallback (noVNC) stack: $([ "$USE_VNC" = "1" ] && echo ready || echo missing)"
 WIN_ARGS=(-no-window)
 if [ "$USE_VNC" = "1" ]; then
   Xvfb :99 -screen 0 500x800x24 > xvfb.log 2>&1 &
