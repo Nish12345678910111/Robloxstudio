@@ -78,13 +78,24 @@ jobs:
           if [ -w /dev/kvm ]; then echo "Acceleration: READY"; else echo "Acceleration: software mode"; fi
           nproc; free -h
 
+      - name: Cache cloudflared binary
+        uses: actions/cache@v4
+        with:
+          path: ~/cloudflared-bin
+          key: cloudflared-bin-v1
+
       - name: Install cloudflared (Cloudflare Tunnel)
         run: |
-          for i in 1 2 3 4 5; do
-            curl -fL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/cloudflared \
-              https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && break
-            echo "cloudflared download attempt $i failed, retrying..."; sleep 10
-          done
+          if [ -x ~/cloudflared-bin/cloudflared ]; then
+            cp ~/cloudflared-bin/cloudflared /tmp/cloudflared
+          else
+            for i in 1 2 3 4 5; do
+              curl -fL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/cloudflared \
+                https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && break
+              echo "cloudflared download attempt $i failed, retrying..."; sleep 10
+            done
+            mkdir -p ~/cloudflared-bin && cp /tmp/cloudflared ~/cloudflared-bin/cloudflared || true
+          fi
           test -s /tmp/cloudflared
           chmod +x /tmp/cloudflared
           sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
@@ -97,16 +108,6 @@ jobs:
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
           key: cloud-phone-emulator-v4-android9
-
-      - name: Install fallback screen stack
-        # Deterministic, in the open: the noVNC fallback kept vanishing
-        # because this stack installed in the background and raced the
-        # emulator launch decision. Installing it here (failure never
-        # blocks the phone) means start.sh always finds it ready.
-        run: |
-          sudo apt-get update -qq || true
-          sudo apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool || true
-          command -v Xvfb x11vnc websockify || true
 
       - name: Start Cloud Phone
         env:
