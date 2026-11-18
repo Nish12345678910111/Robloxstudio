@@ -47,7 +47,7 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
 @media(max-width:460px){.fsBtn{right:8px}}
 .cardFoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap}
 .footLinks{display:flex;gap:14px;font-size:13.5px}.footLinks a{text-decoration:none}.footLinks a:hover{text-decoration:underline}
-.footBtns{display:flex;gap:8px}
+.footBtns{display:flex;gap:8px;align-items:center}.apkBtn{cursor:pointer;padding:9px 12px;border-radius:10px;border:1px solid #2a3a63;background:#0d1f16;color:#a7f3c9;font-size:13px;font-weight:600}
 .stop{background:#241a08;border-color:#8a5a12;color:#ffd9a0}.del{background:#2b0e18;border-color:#7f1d2f;color:#ffb4c0}
 /* login */
 .loginWrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}

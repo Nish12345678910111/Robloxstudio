@@ -7,7 +7,7 @@ async function embedUrl(p) {
     return p.viewerUrl + "?t=" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""); }
   catch { return p.viewerUrl; }
 }
-function PhoneCard({ p, user, onStop, onDelete }) {
+function PhoneCard({ p, user, onStop, onDelete, onToast }) {
   const [frameUrl, setFrameUrl] = useState(null);
   const tok = frameUrl && frameUrl.includes("?t=") ? frameUrl.split("?t=")[1] : null;
   useEffect(() => { let on = true; embedUrl(p).then(u => { if (on) setFrameUrl(u); }); return () => { on = false; }; }, [p.viewerUrl, p.password]);
@@ -61,6 +61,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
     <footer className="cardFoot">
       <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.tunnelUrl ? <a href={p.tunnelUrl + "/vnc.html?autoconnect=true&resize=scale"} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : p.viewerUrl ? <a href={p.viewerUrl + "/vnc/vnc.html?autoconnect=true&resize=scale" + (tok ? "&t=" + tok : "")} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : null}</span>
       <span className="footBtns">
+        {live ? <label className="apkBtn">⬆ Install APK<input type="file" accept=".apk,application/vnd.android.package-archive" hidden onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; onToast?.("ok", "Installing " + f.name + " ..."); try { const r = await fetch(p.viewerUrl + "/install-apk?t=" + (tok || ""), { method: "POST", body: f }); const j = await r.json().catch(() => ({})); onToast?.(j.ok ? "ok" : "warn", j.message || "Install finished."); } catch { onToast?.("warn", "Could not reach the phone to install."); } }} /></label> : null}
         {(p.status === "in_progress" || p.status === "queued") && <button className="stop" onClick={() => onStop(p.runId)}>⏹ Stop Cloud Phone</button>}
         <button className="del" onClick={() => onDelete(p)}>🗑 Delete Cloud Phone</button>
       </span>
@@ -171,7 +172,7 @@ export default function Dashboard({ user, tokenReady }) {
     <div className="toasts">{toasts.map(t => <div key={t.id} className={"toast " + t.kind} onClick={() => setToasts(ts => ts.filter(x => x.id !== t.id))}>{t.kind === "warn" ? "⚠️ " : ""}{t.text}</div>)}</div>
     <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
     {visible.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate cloud phone, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
-      : <div className="grid">{visible.map(p => <PhoneCard key={p.phoneId || p.runId} p={p} user={user} onStop={stop} onDelete={del} />)}</div>}
+      : <div className="grid">{visible.map(p => <PhoneCard key={p.phoneId || p.runId} p={p} user={user} onStop={stop} onDelete={del} onToast={pushToast} />)}</div>}
     <button className="fab" onClick={create} disabled={creating || !tokenReady} title="New Cloud Phone">{creating ? "…" : "＋"}</button>
     </main></div>);
 }

@@ -400,12 +400,20 @@ class H(BaseHTTPRequestHandler):
                 return
         if authed(self) and backend_up(): return self._proxy_http()
         return self._send(404, "not found")
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
     def do_POST(self):
         from urllib.parse import urlparse
         _authed_first = authed(self)  # token rides in the query - check BEFORE stripping it
         self.path = urlparse(self.path).path
         n = int(self.headers.get("Content-Length", 0))
-        try: body = json.loads(self.rfile.read(n) or b"{}")
+        raw_body = self.rfile.read(n) if n else b""
+        try: body = json.loads(raw_body or b"{}")
         except Exception: body = {}
         if self.path == "/login":
             ok = hmac.compare_digest(str(body.get("password", "")), PASSWORD) if PASSWORD else True
@@ -413,6 +421,34 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({"t": TOKEN}), "application/json",
                               {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
         if not _authed_first: return self._send(401, "login first")
+        if self.path == "/install-apk":
+            cors = {"Access-Control-Allow-Origin": "*"}
+            if len(raw_body) < 10000 or raw_body[:2] != b"PK":
+                return self._send(400, json.dumps({"ok": False, "message": "That file is not an APK."}), "application/json", cors)
+            if len(raw_body) > 300 * 1024 * 1024:
+                return self._send(400, json.dumps({"ok": False, "message": "APK too large (max 300 MB)."}), "application/json", cors)
+            tmp = f"/tmp/ncp-{os.getpid()}.apk"
+            try:
+                open(tmp, "wb").write(raw_body)
+                r = subprocess.run([ADB, "-s", SERIAL, "install", "-r", "-g", tmp],
+                                   capture_output=True, text=True, timeout=300)
+                out = ((r.stdout or "") + (r.stderr or "")).strip()
+            except Exception as e:
+                out = f"install error: {e}"
+            finally:
+                try: os.unlink(tmp)
+                except Exception: pass
+            if "Success" in out:
+                msg, ok = "App installed - check the phone's app drawer.", True
+            elif "NO_MATCHING_ABIS" in out or "INSTALL_FAILED_NO_MATCHING" in out:
+                msg, ok = "This APK is built for a different processor, so this phone cannot run it.", False
+            elif "INSTALL_FAILED_ALREADY_EXISTS" in out:
+                msg, ok = "That app is already installed.", False
+            elif "INSTALL_FAILED_INSUFFICIENT_STORAGE" in out:
+                msg, ok = "The phone is out of storage.", False
+            else:
+                msg, ok = "Install failed: " + (out.splitlines()[-1][:160] if out else "unknown error"), False
+            return self._send(200, json.dumps({"ok": ok, "message": msg}), "application/json", cors)
         if self.path == "/tap":
             ISHELL.send(f"input tap {int(body['x'])} {int(body['y'])}")
         elif self.path == "/swipe":
