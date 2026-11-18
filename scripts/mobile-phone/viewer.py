@@ -39,6 +39,9 @@ def run_dump_pipeline():
         with lock:
             stale = time.time() - latest["t"] > 3
         if stale:
+            if backend_up():
+                time.sleep(5)
+                continue
             if time.time() - _last_wake[0] > 8:
                 _last_wake[0] = time.time()
                 adb("shell", "input", "keyevent", "224")  # wake display
@@ -114,6 +117,8 @@ def run_pipeline():
     screenshots. Now: no frame for 4s = kill everything and restart.
     """
     while True:
+        while backend_up():
+            time.sleep(2)  # scrcpy owns the encoder now
         rec = ff = None
         try:
             if ":" in SERIAL: adb("connect", SERIAL, timeout=10)
@@ -141,6 +146,7 @@ def run_pipeline():
             while True:
                 r, _, _ = select.select([fd], [], [], 4)
                 if not r:
+                    if backend_up(): break  # hand the encoder to scrcpy
                     if time.time() - last_frame > 4:
                         print("stream stalled - restarting pipeline", flush=True)
                         break  # stalled -> restart
@@ -326,6 +332,11 @@ class H(BaseHTTPRequestHandler):
         if "websocket" in (self.headers.get("Upgrade") or "").lower():
             if not authed(self): return self._send(401, "login first")
             return self._proxy_ws()
+        if self.path.startswith("/status.json"):
+            if not authed(self): return self._send(401, "login first")
+            with lock: age = time.time() - latest["t"] if latest["t"] else -1
+            return self._send(200, json.dumps({"scrcpy": backend_up(), "vnc": vnc_up(),
+                "lastFrameAgeSec": round(age, 1)}), "application/json")
         if self.path.startswith("/scrcpy-ready"):
             if not authed(self): return self._send(401, "login first")
             return self._send(200 if backend_up() else 503, "{}")
