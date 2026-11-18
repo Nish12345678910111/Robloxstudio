@@ -182,22 +182,6 @@ if [ "$USE_VNC" = "1" ]; then
     done ) >/dev/null 2>&1 &
 fi
 adb start-server >/dev/null 2>&1 || true
-# ws-scrcpy (DEFAULT screen): build in background while the phone boots;
-# viewer.py serves the old fast screen until it answers, then upgrades.
-(
-  cd "$WORKDIR_PHONE" || exit 0
-  command -v node >/dev/null 2>&1 || exit 0
-  [ -d wss ] || git clone -q --depth 1 --branch v0.8.1 https://github.com/NetrisTV/ws-scrcpy.git wss >> wsscrcpy.log 2>&1 || exit 0
-  cd wss || exit 0
-  cat > build.config.override.json <<'CFG'
-{"INCLUDE_APPL":false,"INCLUDE_GOOG":true,"INCLUDE_ADB_SHELL":false,"INCLUDE_DEV_TOOLS":false,"INCLUDE_FILE_LISTING":false,"USE_BROADWAY":true,"USE_H264_CONVERTER":true,"USE_TINY_H264":true,"USE_WEBCODECS":true,"USE_WDA_MJPEG_SERVER":false,"USE_QVH_SERVER":false}
-CFG
-  [ -d node_modules ] || npm install --ignore-scripts --no-audit --no-fund >> ../wsscrcpy.log 2>&1
-  [ -f dist/index.js ] || npm run dist >> ../wsscrcpy.log 2>&1
-  printf 'server:\n  - secure: false\n    port: 18083\n' > ../wss.yaml
-  cd dist && while true; do WS_SCRCPY_CONFIG="$WORKDIR_PHONE/wss.yaml" PATH="$PATH" node index.js >> ../../wsscrcpy.log 2>&1; sleep 3; done &
-  echo $! > ../../wsscrcpy.pid
-) >/dev/null 2>&1 &
 # soft keyboard must actually open when a text field is tapped
 sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 2>/dev/null || true
 (
