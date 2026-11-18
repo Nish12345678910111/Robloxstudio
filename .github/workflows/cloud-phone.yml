@@ -171,3 +171,14 @@ jobs:
             sleep 15
           done
           echo "Session over."
+
+      - name: Dump phone logs (after session)
+        if: always()
+        timeout-minutes: 2
+        run: |
+          # Full session logs into the job log (readable for diagnosis).
+          # These files never contain the phone password or tokens.
+          for f in .phone-vm/emulator.log .phone-vm/viewer.log .phone-vm/wsscrcpy.log .phone-vm/vnc.log .phone-vm/websockify.log .phone-vm/supervisor.log .phone-vm/setup-skip.log; do
+            echo "===== $f (tail) ====="
+            tail -n 120 "$f" 2>/dev/null || echo "(none)"
+          done
