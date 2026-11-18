@@ -11,7 +11,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
   const [frameUrl, setFrameUrl] = useState(null);
   const tok = frameUrl && frameUrl.includes("?t=") ? frameUrl.split("?t=")[1] : null;
   useEffect(() => { let on = true; embedUrl(p).then(u => { if (on) setFrameUrl(u); }); return () => { on = false; }; }, [p.viewerUrl, p.password]);
-  const screenUrl = p.viewerUrl && p.password ? p.viewerUrl + "/vnc/vnc.html?password=" + encodeURIComponent(p.password) + "&autoconnect=true&resize=scale" + (tok ? "&t=" + tok : "") : frameUrl;
+  const screenUrl = p.viewerUrl && p.password ? p.viewerUrl + "/vnc/vnc.html?password=" + encodeURIComponent(p.password) + "&scale=true" + (tok ? "&t=" + tok : "") : frameUrl;
   const live = p.status === "in_progress" && screenUrl;
   // A finished phone (its ~6h session ended, it errored, or it was stopped)
   // must say so - never sit on "starting…" with the timer counting forever.
@@ -59,7 +59,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
       </div>
     </div>
     <footer className="cardFoot">
-      <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.tunnelUrl ? <a href={p.tunnelUrl + "/vnc.html?autoconnect=true&resize=scale"} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : p.viewerUrl ? <a href={p.viewerUrl + "/vnc/vnc.html?autoconnect=true&resize=scale" + (tok ? "&t=" + tok : "")} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : null}</span>
+      <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.tunnelUrl ? <a href={p.tunnelUrl + "/vnc_lite.html?password=" + encodeURIComponent(p.password || "") + "&scale=true"} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : p.viewerUrl ? <a href={p.viewerUrl + "/vnc/vnc.html?password=" + encodeURIComponent(p.password || "") + "&scale=true" + (tok ? "&t=" + tok : "")} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : null}</span>
       <span className="footBtns">
         {live ? <label className="apkBtn">⬆ Install APK<input type="file" accept=".apk,application/vnd.android.package-archive" hidden onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; onToast?.("ok", "Installing " + f.name + " ..."); try { const r = await fetch(p.viewerUrl + "/install-apk?t=" + (tok || ""), { method: "POST", body: f }); const j = await r.json().catch(() => ({})); onToast?.(j.ok ? "ok" : "warn", j.message || "Install finished."); } catch { onToast?.("warn", "Could not reach the phone to install."); } }} /></label> : null}
         {(p.status === "in_progress" || p.status === "queued") && <button className="stop" onClick={() => onStop(p.runId)}>⏹ Stop Cloud Phone</button>}

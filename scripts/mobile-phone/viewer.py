@@ -234,7 +234,7 @@ img.addEventListener('contextmenu',e=>e.preventDefault());
 
 def novnc_url():
     from urllib.parse import quote
-    return "/vnc/vnc.html?password=" + quote(PASSWORD) + "&autoconnect=true&resize=scale&t=" + TOKEN
+    return "/vnc/vnc.html?password=" + quote(PASSWORD) + "&scale=true&t=" + TOKEN
 
 def shim_page():
     return ("<!doctype html><meta charset=utf-8><title>NishCloudPhone</title>"
@@ -281,6 +281,24 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             for k, v in (extra or {}).items(): self.send_header(k, v)
             self.end_headers(); self.wfile.write(data)
+        except Exception:
+            self._send(502, "screen starting")
+    def _proxy_lite(self, extra=None):
+        try:
+            c = http.client.HTTPConnection(VNC_BACKEND[0], VNC_BACKEND[1], timeout=30)
+            c.request("GET", "/vnc_lite.html", headers={"Host": f"{VNC_BACKEND[0]}:{VNC_BACKEND[1]}"})
+            r = c.getresponse(); data = r.read().decode("utf-8", "replace")
+            css = ("<style>#top_bar,#sendCtrlAltDelButton{display:none!important}"
+                   "html,body{background:#000!important;height:100%!important}"
+                   "#screen{position:fixed;inset:0}</style>")
+            if "</head>" in data: data = data.replace("</head>", css + "</head>", 1)
+            body = data.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for k, v in (extra or {}).items(): self.send_header(k, v)
+            self.end_headers(); self.wfile.write(body)
         except Exception:
             self._send(502, "screen starting")
     def _proxy_ws(self, backend=None, path=None):
@@ -336,6 +354,7 @@ class H(BaseHTTPRequestHandler):
                     "const $=s=>document.querySelector(s); window.__FB=1; window.__EMBED=1; window.__TOK='" + TOKEN + "';")
                 page = page.replace("</body>", """<script>setInterval(async()=>{try{const r=await fetch(location.pathname+'?t='+window.__TOK); const t=await r.text(); if(t.includes('noVNC')||t.includes('rfb')) location.reload();}catch(e){}},5000);</script></body>""")
                 return self._send(200, page)
+            if sub.split("?")[0] == "/vnc.html": return self._proxy_lite(extra=_vnc_extra)
             return self._proxy_http(backend=VNC_BACKEND, path=sub, extra=_vnc_extra)
         if "websocket" in (self.headers.get("Upgrade") or "").lower():
             if not authed(self): return self._send(401, "login first")
