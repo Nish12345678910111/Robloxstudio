@@ -24,9 +24,18 @@ SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
 
 # Viewer password (name kept for compatibility with the workflow env).
+# Workflow steps share no env, so phase 1 persists it (workspace-only
+# file, never printed, never uploaded) for phase 2 to pick back up -
+# otherwise the emulator phase would mint a second password and the
+# saved credentials would stop matching the running viewer.
+PW_FILE="$WORKDIR_PHONE/.pw"
+if [ -z "${VNC_PASSWORD:-}" ] && [ -f "$PW_FILE" ]; then
+  VNC_PASSWORD="$(cat "$PW_FILE")"
+fi
 if [ -z "${VNC_PASSWORD:-}" ]; then
   VNC_PASSWORD="$(openssl rand -hex 4)"
 fi
+printf %s "$VNC_PASSWORD" > "$PW_FILE"
 export VNC_PASSWORD
 SERIAL="emulator-5554"
 
@@ -45,6 +54,13 @@ fi
 # Screen page + tunnel + saved credentials BEFORE any slow SDK work, so the
 # dashboard shows Url/Password in well under a minute. The viewer retries
 # ADB on its own until the emulator appears.
+LIVE_ALREADY=0
+if [ "${PHASE:-}" = "2" ] && [ -f viewer.pid ] && kill -0 "$(cat viewer.pid)" 2>/dev/null \
+   && [ -f cloudflared-viewer.pid ] && kill -0 "$(cat cloudflared-viewer.pid)" 2>/dev/null; then
+  LIVE_ALREADY=1  # phase 1 already brought the screen service up
+  VIEWER_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-viewer.log | head -n1 || true)"
+fi
+if [ "$LIVE_ALREADY" = "0" ]; then
 PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 ADB_SERIAL="$SERIAL" \
   python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" > viewer.log 2>&1 &
 echo $! > viewer.pid
@@ -66,14 +82,15 @@ if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
     sleep 10
   done
 fi
-if [ "$SAVED" != "1" ]; then
+fi
+if [ "$LIVE_ALREADY" = "0" ] && [ "$SAVED" != "1" ]; then
   # Private backup channel (token-only access, never printed) so the
   # dashboard still receives this phone even if the main save is down.
   cat > "$WORKDIR_PHONE/cloud-phone-info.json" <<EOF
 {"phoneId":"${PHONE_ID:-manual}","edition":"${EDITION}","tunnelUrl":"${TUNNEL_URL}","viewerUrl":"${VIEWER_URL}","password":"${VNC_PASSWORD}"}
 EOF
 fi
-(
+if [ "$LIVE_ALREADY" = "0" ]; then (
   while true; do
     sleep 20
     if [ -f viewer.pid ] && ! kill -0 "$(cat viewer.pid)" 2>/dev/null; then
@@ -99,7 +116,9 @@ fi
     fi
   done
 ) > supervisor.log 2>&1 &
+fi
 echo "Cloud phone created."
+if [ "${PHASE:-}" = "1" ]; then echo "Screen service live."; exit 0; fi
 
 # ------------------------------------------------------ emulator setup ------
 echo ">>> Starting Android 9 phone..."

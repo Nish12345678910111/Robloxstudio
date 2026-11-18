@@ -101,6 +101,15 @@ jobs:
           sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
           cloudflared --version
 
+      - name: Start screen service (live Url first)
+        env:
+          PHONE_ID: ${{ inputs.phone_id }}
+          PHASE: "1"
+          AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
+        run: |
+          chmod +x scripts/mobile-phone/start.sh
+          ./scripts/mobile-phone/start.sh
+
       - name: Cache Android Emulator (SDK + phone image)
         uses: actions/cache@v4
         with:
@@ -112,6 +121,7 @@ jobs:
       - name: Start Cloud Phone
         env:
           PHONE_ID: ${{ inputs.phone_id }}
+          PHASE: "2"
           START_ONLY: "1"
           RAM_MB: ${{ inputs.ram_mb }}
           CPU_CORES: ${{ inputs.cpu_cores }}
