@@ -194,9 +194,19 @@ if ! emu_alive && [ "$ACCEL" = "on" ]; then
   ACCEL="off"; WIN_ARGS=(-no-window); USE_VNC=0; launch_emu off; sleep 8
 fi
 if [ "$USE_VNC" = "1" ]; then
-  ( for _ in $(seq 1 40); do
-      xdotool search --name "arning" key Return >/dev/null 2>&1 && break
-      xdotool search --name "arning" windowactivate --sync key Return >/dev/null 2>&1 && break
+  ( for _ in $(seq 1 60); do
+      # pin the emulator window to the top-left so VNC serves exactly
+      # the phone rectangle (no black side bars, screen fills the box)
+      xdotool search --name "mulator" windowmove 0 0 >/dev/null 2>&1 || true
+      # kill the nested-virtualization confirmation: Return straight
+      # into the warning window, then click where its OK button sits
+      if xdotool search --name "arning" >/dev/null 2>&1; then
+        xdotool search --name "arning" windowfocus key Return >/dev/null 2>&1 || true
+        xdotool search --name "arning" key Return >/dev/null 2>&1 || true
+        GEO="$(xdotool search --name "arning" getwindowgeometry 2>/dev/null | head -3 || true)"
+        sleep 1
+        xdotool search --name "arning" >/dev/null 2>&1 || break
+      fi
       sleep 3
     done ) >/dev/null 2>&1 &
 fi
@@ -221,6 +231,9 @@ sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 
   $S settings put system screen_off_timeout 2147483647 >/dev/null 2>&1 || true
   $S svc power stayon true >/dev/null 2>&1 || true
   $S input keyevent 224 >/dev/null 2>&1 || true
+  $S settings put global package_verifier_enable 0 >/dev/null 2>&1 || true
+  $S settings put global verifier_verify_adb_installs 0 >/dev/null 2>&1 || true
+  $S settings put secure install_non_market_apps 1 >/dev/null 2>&1 || true
   $S settings put global wifi_on 1 >/dev/null 2>&1 || true
   $S svc wifi enable >/dev/null 2>&1 || true
   HOME_COMP="$($S cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null | tr -d '\r' | tail -n1 || true)"
@@ -235,7 +248,7 @@ sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 
 # bridge it to the web, tunnel it, and store that URL on the phone row.
 if [ "$USE_VNC" = "1" ]; then
   (
-    x11vnc -display :99 -forever -shared -noxdamage -clip 432x768+0+0 -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
+    x11vnc -display :99 -forever -shared -noxdamage -threads -defer 10 -wait 10 -nowf -nowcr -clip 432x768+0+0 -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
     websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 > websockify.log 2>&1 &
     cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:6080" > cloudflared-novnc.log 2>&1 &
     NOVNC_URL=""
