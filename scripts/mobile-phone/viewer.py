@@ -204,12 +204,13 @@ button{background:linear-gradient(135deg,#2563eb,#7c3aed);font-weight:700;cursor
 <script>
 const $=s=>document.querySelector(s); let lastVal="";
 if(window.__EMBED){startScreen();}
-function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';const img=$('#scr'); const k=window.__TOK||'';
+function ready(){var w=document.querySelector('#wait'); if(w) w.style.display='none'; document.querySelector('#bar').style.display='flex'; document.querySelector('#tgl').style.display='block';}
+function startScreen(){$('#gate').style.display='none';$('#app').style.display='block';$('#bar').style.display='none';$('#tgl').style.display='none';const img=$('#scr'); setTimeout(function(){var w=$('#wait'); if(w&&w.style.display!=='none'&&!window.__FB) location.reload();},25000); const k=window.__TOK||'';
  if(!window.__FB){ const up=setInterval(async()=>{try{const r=await fetch('/scrcpy-ready?t='+k); if(r.ok){clearInterval(up); location.replace('/go?t='+k);}}catch(e){}},4000); }
  if(window.__FB){ const gs=$('#gateSub'); if(gs&&!window.__EMBED) gs.textContent='Fallback screen - enter the phone password'; // snapshot polling: works even if the live stream is stuck
-   const tick=()=>{const i=new Image(); i.onload=()=>{img.src=i.src;$('#wait').style.display='none'; setTimeout(tick,450);}; i.onerror=()=>setTimeout(tick,1200); i.src='/frame.jpg?t='+k+'&x='+Date.now();}; tick(); return;}
- const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; img.onload=()=>{$('#wait').style.display='none';}; boot(); img.onerror=()=>setTimeout(boot,2000);
- const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){$('#wait').style.display='none'; clearInterval(chk);}}catch(e){}},1500);}
+   const tick=()=>{const i=new Image(); i.onload=()=>{img.src=i.src;ready(); setTimeout(tick,450);}; i.onerror=()=>setTimeout(tick,1200); i.src='/frame.jpg?t='+k+'&x='+Date.now();}; tick(); return;}
+ const boot=()=>{img.src='/stream.mjpg?t='+k+'&x='+Date.now();}; img.onload=()=>ready(); boot(); img.onerror=()=>setTimeout(boot,2000);
+ const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){ready(); clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
  if(r.ok){ if(window.__FB) startScreen(); else { if('VideoDecoder' in window && !window.__PL){ try{ const s2=await VideoDecoder.isConfigSupported({codec:'avc1.42E01E',codedWidth:432,codedHeight:768}); window.__PL='mse'; }catch(e){ window.__PL='mse'; } } const j=await r.json().catch(()=>({})); const tok=j.t||''; const pl=window.__PL||'mse'; const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/s/'+tok+'/'; location.replace('/s/'+tok+'/#!action=stream&udid=emulator-5554&player='+pl+'&ws='+encodeURIComponent(ws)); } }
