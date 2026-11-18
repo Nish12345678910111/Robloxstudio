@@ -132,21 +132,6 @@ jobs:
             /usr/local/lib/android/sdk/system-images
           key: cloud-phone-emulator-v4-android9
 
-      - name: Upload phone logs (diagnostics)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloud-phone-logs-${{ inputs.phone_id }}-${{ github.run_id }}
-          path: |
-            .phone-vm/emulator.log
-            .phone-vm/viewer.log
-            .phone-vm/vnc.log
-            .phone-vm/setup-skip.log
-            .phone-vm/wsscrcpy.log
-            .phone-vm/supervisor.log
-          retention-days: 3
-          if-no-files-found: ignore
-
       - name: Publish phone info (private backup channel)
         uses: actions/upload-artifact@v4
         with:
@@ -173,13 +158,3 @@ jobs:
           done
           echo "Session over."
 
-      - name: Dump phone logs (after session)
-        if: always()
-        timeout-minutes: 2
-        run: |
-          # Full session logs into the job log (readable for diagnosis).
-          # These files never contain the phone password or tokens.
-          for f in .phone-vm/emulator.log .phone-vm/viewer.log .phone-vm/wsscrcpy.log .phone-vm/vnc.log .phone-vm/websockify.log .phone-vm/supervisor.log .phone-vm/setup-skip.log; do
-            echo "===== $f (tail) ====="
-            tail -n 120 "$f" 2>/dev/null || echo "(none)"
-          done

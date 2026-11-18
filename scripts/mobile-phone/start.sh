@@ -148,7 +148,7 @@ if [ "$USE_VNC" = "1" ]; then
   echo $! > xvfb.pid
   export DISPLAY=:99 QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
   sleep 2
-  WIN_ARGS=()
+  WIN_ARGS=(-no-nested-warning)
 fi
 ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
@@ -165,7 +165,7 @@ launch_emu() {
 emu_alive() { [ -f emulator.pid ] && kill -0 "$(cat emulator.pid)" 2>/dev/null; }
 launch_emu "$ACCEL"; sleep 12
 if ! emu_alive && [ "$USE_VNC" = "1" ]; then
-  launch_emu "$ACCEL"; sleep 12  # one retry of the windowed (noVNC) launch
+  WIN_ARGS=(); launch_emu "$ACCEL"; sleep 12  # retry windowed without the flag
 fi
 if ! emu_alive && [ "$USE_VNC" = "1" ]; then
   USE_VNC=0; WIN_ARGS=(-no-window); launch_emu "$ACCEL"; sleep 10
@@ -173,6 +173,13 @@ fi
 echo "$(date -u +%H:%M:%S) vnc_stack=$USE_VNC emulator_alive=$(emu_alive && echo yes || echo no)" >> supervisor.log 2>/dev/null || true
 if ! emu_alive && [ "$ACCEL" = "on" ]; then
   ACCEL="off"; WIN_ARGS=(-no-window); USE_VNC=0; launch_emu off; sleep 8
+fi
+if [ "$USE_VNC" = "1" ]; then
+  ( for _ in $(seq 1 40); do
+      xdotool search --name "arning" key Return >/dev/null 2>&1 && break
+      xdotool search --name "arning" windowactivate --sync key Return >/dev/null 2>&1 && break
+      sleep 3
+    done ) >/dev/null 2>&1 &
 fi
 adb start-server >/dev/null 2>&1 || true
 # ws-scrcpy (DEFAULT screen): build in background while the phone boots;
@@ -225,7 +232,6 @@ sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 
 # bridge it to the web, tunnel it, and store that URL on the phone row.
 if [ "$USE_VNC" = "1" ]; then
   (
-    ( for _ in $(seq 1 30); do xdotool search --name "arning" windowactivate --sync key Return >/dev/null 2>&1 && break; sleep 3; done ) >/dev/null 2>&1 &
     x11vnc -display :99 -forever -shared -noxdamage -clip 432x768+0+0 -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
     websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 > websockify.log 2>&1 &
     cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:6080" > cloudflared-novnc.log 2>&1 &
