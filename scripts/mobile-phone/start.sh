@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SESSION_MINUTES="${SESSION_MINUTES:-300}"
-EDITION="android9"
+EDITION="android11"
 echo ">>> Android edition: $EDITION"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -121,7 +121,7 @@ echo "Cloud phone created."
 if [ "${PHASE:-}" = "1" ]; then echo "Screen service live."; exit 0; fi
 
 # ------------------------------------------------------ emulator setup ------
-echo ">>> Starting Android 9 phone..."
+echo ">>> Starting Android 11 phone..."
 # Fast path: CI runners ship Java + Android SDK preinstalled - use them and
 # skip every big download. Only fall back to a private SDK when missing.
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
@@ -138,13 +138,13 @@ fi
 AVD_HOME_DIR="$WORKDIR_PHONE/avd"; mkdir -p "$AVD_HOME_DIR"
 export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
 export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
-IMG_PKG="system-images;android-28;google_apis;x86_64"
+IMG_PKG="system-images;android-30;google_apis;x86_64"
 # Licenses + installs ONLY when something is actually missing (cache hits
 # skip all of this - no more sdkmanager noise/time on the fast path).
-if [ ! -x "$SDK/emulator/emulator" ] || [ ! -d "$SDK/system-images/android-28/google_apis/x86_64" ]; then
+if [ ! -x "$SDK/emulator/emulator" ] || [ ! -d "$SDK/system-images/android-30/google_apis/x86_64" ]; then
   yes | sdkmanager --licenses >/dev/null 2>&1 || true
   [ -x "$SDK/emulator/emulator" ] || sdkmanager "emulator" "platform-tools" >/dev/null
-  [ -d "$SDK/system-images/android-28/google_apis/x86_64" ] || sdkmanager "$IMG_PKG" >/dev/null
+  [ -d "$SDK/system-images/android-30/google_apis/x86_64" ] || sdkmanager "$IMG_PKG" >/dev/null
 fi
 if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
@@ -231,6 +231,7 @@ sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 
   $S settings put system screen_off_timeout 2147483647 >/dev/null 2>&1 || true
   $S svc power stayon true >/dev/null 2>&1 || true
   $S input keyevent 224 >/dev/null 2>&1 || true
+  echo "native bridge: $($S getprop ro.dalvik.vm.native.bridge 2>/dev/null | tr -d '\r')" >> supervisor.log 2>/dev/null || true
   $S settings put global package_verifier_enable 0 >/dev/null 2>&1 || true
   $S settings put global verifier_verify_adb_installs 0 >/dev/null 2>&1 || true
   $S settings put secure install_non_market_apps 1 >/dev/null 2>&1 || true
