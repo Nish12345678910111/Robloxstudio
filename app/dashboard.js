@@ -41,7 +41,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
     } catch {}
   }
   return (<section className="card">
-    <header className="cardHead"><div><h3>📱 Cloud Phone · Android 9</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
+    <header className="cardHead"><div><h3>📱 Cloud Phone · Android 11</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
       <p><b>Url -</b> {p.viewerUrl ? <a href={frameUrl || p.viewerUrl} target="_blank" rel="noreferrer">{p.viewerUrl}</a> : "waiting for connection…"}</p>
@@ -98,7 +98,7 @@ export default function Dashboard({ user, tokenReady }) {
     const d = r ? await r.json().catch(() => ({})) : {};
     if (r?.ok) {
       // Show the card instantly as "starting", don't wait for upstream.
-      setPhones(ps => [{ phoneId: d.phoneId, runId: null, edition: "android9", owner: user.username,
+      setPhones(ps => [{ phoneId: d.phoneId, runId: null, edition: "android11", owner: user.username,
         status: d.state === "busy" ? "busy" : "starting", createdAt: new Date().toISOString(),
         viewerUrl: null, password: null }, ...ps]);
       if (d.state === "busy") setNotice("Many users are using free cloud phones, try again later."); else setMsg("✅ Cloud phone created — it is starting, the screen will appear here.");
@@ -166,7 +166,7 @@ export default function Dashboard({ user, tokenReady }) {
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
     </aside>
     <main className="wrap">
-    <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 9 · auto WiFi · straight to home screen</p></div>
+    <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 · auto WiFi · straight to home screen</p></div>
       </header>
     {!tokenReady && <p className="warn">⏳ Cloud phones are busy right now — Many users are using free cloud phones, try again later.</p>}
     <div className="toasts">{toasts.map(t => <div key={t.id} className={"toast " + t.kind} onClick={() => setToasts(ts => ts.filter(x => x.id !== t.id))}>{t.kind === "warn" ? "⚠️ " : ""}{t.text}</div>)}</div>
