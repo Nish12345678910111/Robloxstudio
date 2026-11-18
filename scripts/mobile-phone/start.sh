@@ -148,7 +148,7 @@ if [ "$USE_VNC" = "1" ]; then
   echo $! > xvfb.pid
   export DISPLAY=:99 QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
   sleep 2
-  WIN_ARGS=(-no-nested-warning)
+  WIN_ARGS=()
 fi
 ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
@@ -170,6 +170,7 @@ fi
 if ! emu_alive && [ "$USE_VNC" = "1" ]; then
   USE_VNC=0; WIN_ARGS=(-no-window); launch_emu "$ACCEL"; sleep 10
 fi
+echo "$(date -u +%H:%M:%S) vnc_stack=$USE_VNC emulator_alive=$(emu_alive && echo yes || echo no)" >> supervisor.log 2>/dev/null || true
 if ! emu_alive && [ "$ACCEL" = "on" ]; then
   ACCEL="off"; WIN_ARGS=(-no-window); USE_VNC=0; launch_emu off; sleep 8
 fi
