@@ -213,7 +213,7 @@ function startScreen(){$('#gate').style.display='none';$('#app').style.display='
  const chk=setInterval(async()=>{try{const r=await fetch('/frame.jpg?t='+k); if(r.ok){ready(); clearInterval(chk);}}catch(e){}},1500);}
 $('#f').onsubmit=async e=>{e.preventDefault();
  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
- if(r.ok){ if(window.__FB) startScreen(); else { if('VideoDecoder' in window && !window.__PL){ try{ const s2=await VideoDecoder.isConfigSupported({codec:'avc1.42E01E',codedWidth:432,codedHeight:768}); window.__PL='mse'; }catch(e){ window.__PL='mse'; } } const j=await r.json().catch(()=>({})); const tok=j.t||''; const pl=window.__PL||'mse'; const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/s/'+tok+'/'; location.replace('/s/'+tok+'/#!action=stream&udid=emulator-5554&player='+pl+'&ws='+encodeURIComponent(ws)); } }
+ if(r.ok){ if(window.__FB) startScreen(); else { const j=await r.json().catch(()=>({})); location.replace('/go?t='+(j.t||'')); } }
  else $('#e').textContent='Wrong password';};
 const post=(u,b)=>fetch(u+'?t='+(window.__TOK||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>post('/key',{code:+b.dataset.k}));
@@ -232,20 +232,25 @@ img.addEventListener('pointerup',e=>{e.preventDefault();if(!down)return;const u=
 img.addEventListener('contextmenu',e=>e.preventDefault());
 </script></body></html>"""
 
+def novnc_url():
+    from urllib.parse import quote
+    return "/vnc/vnc.html?password=" + quote(PASSWORD) + "&autoconnect=true&resize=scale&t=" + TOKEN
+
 def shim_page():
-    pick = """(async()=>{ let pl='tinyh264';
-if('MediaSource' in window && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"')) pl='mse';
-if(pl!=='mse' && 'VideoDecoder' in window){ try{ const s=await VideoDecoder.isConfigSupported({codec:'avc1.42E01E',codedWidth:432,codedHeight:768,optimizeForLatency:true}); if(s&&s.supported) pl='webcodecs'; }catch(e){} }
-const base='/s/""" + TOKEN + """';
-const ws=(location.protocol==='https:'?'wss://':'ws://')+location.host+base+'/';
-location.replace(base+'/#!action=stream&udid=""" + (SERIAL or "emulator-5554") + """&player='+pl+'&ws='+encodeURIComponent(ws)); })();"""
     return ("<!doctype html><meta charset=utf-8><title>NishCloudPhone</title>"
             "<body style='background:#070b16;color:#8ea3cc;font-family:system-ui;text-align:center;padding-top:22vh'>"
-            "<p>Opening your phone screen…</p><script>" + pick + "</script></body>")
+            "<p>Opening your phone screen\u2026</p><script>location.replace(" + repr(novnc_url()) + ")</script></body>")
 
 def authed(h):
     if not PASSWORD:
         return True
+    try:
+        from urllib.parse import urlparse, parse_qs
+        pwq = (parse_qs(urlparse(h.path).query).get("password") or [""])[0]
+        if pwq and hmac.compare_digest(pwq, PASSWORD):
+            return True
+    except Exception:
+        pass
     cookie = h.headers.get("Cookie", "")
     if f"ncp_view={TOKEN}" in cookie:
         return True
@@ -259,7 +264,7 @@ def authed(h):
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     def log_message(self, *a): pass
-    def _proxy_http(self, backend=None, path=None):
+    def _proxy_http(self, backend=None, path=None, extra=None):
         backend = backend or BACKEND
         try:
             c = http.client.HTTPConnection(backend[0], backend[1], timeout=30)
@@ -274,6 +279,7 @@ class H(BaseHTTPRequestHandler):
                 self.send_header(k, v)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            for k, v in (extra or {}).items(): self.send_header(k, v)
             self.end_headers(); self.wfile.write(data)
         except Exception:
             self._send(502, "screen starting")
@@ -324,12 +330,13 @@ class H(BaseHTTPRequestHandler):
             sub = self.path[4:] or "/vnc.html"
             if "websocket" in (self.headers.get("Upgrade") or "").lower():
                 return self._proxy_ws(backend=VNC_BACKEND, path=sub)
+            _vnc_extra = {"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"} if TOKEN else None
             if not vnc_up():
                 page = HTML.replace("const $=s=>document.querySelector(s);",
                     "const $=s=>document.querySelector(s); window.__FB=1; window.__EMBED=1; window.__TOK='" + TOKEN + "';")
                 page = page.replace("</body>", """<script>setInterval(async()=>{try{const r=await fetch(location.pathname+'?t='+window.__TOK); const t=await r.text(); if(t.includes('noVNC')||t.includes('rfb')) location.reload();}catch(e){}},5000);</script></body>""")
                 return self._send(200, page)
-            return self._proxy_http(backend=VNC_BACKEND, path=sub)
+            return self._proxy_http(backend=VNC_BACKEND, path=sub, extra=_vnc_extra)
         if "websocket" in (self.headers.get("Upgrade") or "").lower():
             if not authed(self): return self._send(401, "login first")
             return self._proxy_ws()
@@ -343,7 +350,7 @@ class H(BaseHTTPRequestHandler):
             return self._send(200 if backend_up() else 503, "{}")
         if self.path.startswith("/go"):
             if not authed(self): return self._send(200, HTML)
-            if backend_up(): return self._send(200, shim_page())
+            return self._send(200, shim_page())
             return self._send(200, HTML.replace("const $=s=>document.querySelector(s);",
                 "const $=s=>document.querySelector(s); window.__EMBED=1; window.__TOK='" + TOKEN + "';"))
         if self.path.startswith("/fallback"):
@@ -360,8 +367,7 @@ class H(BaseHTTPRequestHandler):
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)
             if (qs.get("t") or [""])[0] == TOKEN and TOKEN:
-                if backend_up():
-                    return self._send(200, shim_page(), extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
+                return self._send(200, shim_page(), extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})
                 page = HTML.replace("const $=s=>document.querySelector(s);",
                                     "const $=s=>document.querySelector(s); window.__EMBED=1; window.__TOK='" + TOKEN + "';")
                 return self._send(200, page, extra={"Set-Cookie": f"ncp_view={TOKEN}; HttpOnly; Path=/; SameSite=None; Secure; Max-Age=86400"})

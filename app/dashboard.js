@@ -11,7 +11,7 @@ function PhoneCard({ p, user, onStop, onDelete }) {
   const [frameUrl, setFrameUrl] = useState(null);
   const tok = frameUrl && frameUrl.includes("?t=") ? frameUrl.split("?t=")[1] : null;
   useEffect(() => { let on = true; embedUrl(p).then(u => { if (on) setFrameUrl(u); }); return () => { on = false; }; }, [p.viewerUrl, p.password]);
-  const screenUrl = frameUrl;
+  const screenUrl = p.viewerUrl && p.password ? p.viewerUrl + "/vnc/vnc.html?password=" + encodeURIComponent(p.password) + "&autoconnect=true&resize=scale" + (tok ? "&t=" + tok : "") : frameUrl;
   const live = p.status === "in_progress" && screenUrl;
   // A finished phone (its ~6h session ended, it errored, or it was stopped)
   // must say so - never sit on "starting…" with the timer counting forever.
