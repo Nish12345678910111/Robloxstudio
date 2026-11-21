@@ -162,10 +162,12 @@ jobs:
             # whether this phone was deleted/stopped by its owner.
             if [ -f .phone-vm/.pw ]; then
               PT="$(printf %s "$(cat .phone-vm/.pw)" | sha256sum | cut -d' ' -f1)"
-              if curl -fs --max-time 10 -H "x-phone-token: $PT" "https://nishcloudphone.vercel.app/api/phone-directive?id=${{ inputs.phone_id }}" 2>/dev/null | grep -q '"action":"stop"'; then
-                echo "Owner deleted this phone - shutting down."
-                exit 0
-              fi
+              for SITE in "https://nishcloudphone.vercel.app" "https://nishproductions.netlify.app"; do
+                if curl -fs --max-time 10 -H "x-phone-token: $PT" "$SITE/api/phone-directive?id=${{ inputs.phone_id }}" 2>/dev/null | grep -q '"action":"stop"'; then
+                  echo "Owner deleted this phone - shutting down."
+                  exit 0
+                fi
+              done
             fi
             if [ -f .phone-vm/emulator.pid ] && ! kill -0 "$(cat .phone-vm/emulator.pid)" 2>/dev/null; then
               DEAD=$(( ${DEAD:-0} + 1 ))
