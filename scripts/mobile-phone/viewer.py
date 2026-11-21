@@ -290,7 +290,18 @@ class H(BaseHTTPRequestHandler):
             r = c.getresponse(); data = r.read().decode("utf-8", "replace")
             css = ("<style>#top_bar,#sendCtrlAltDelButton{display:none!important}"
                    "html,body{background:#000!important;height:100%!important}"
-                   "#screen{position:fixed;inset:0}</style>")
+                   "#screen{position:fixed;inset:0}</style>"
+                   "<script>window.addEventListener('load',function(){setTimeout(function(){"
+                   "function grey(){try{var c=document.querySelector('#screen canvas');if(!c||c.width<100)return true;"
+                   "var x=c.getContext('2d');var d=x.getImageData(c.width>>2,c.height>>2,Math.min(80,c.width>>1),Math.min(80,c.height>>1)).data;"
+                   "var seen={},n=0;for(var i=0;i<d.length;i+=16){var k=d[i]+','+d[i+1]+','+d[i+2];if(!seen[k]){seen[k]=1;n++;if(n>6)return false;}}return true;}catch(e){return false;}}"
+                   "if(!grey())return;"
+                   "var t=new URLSearchParams(location.search).get('t')||'';"
+                   "document.body.innerHTML='<img id=f style=\"position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000\">';"
+                   "var img=document.getElementById('f');function tick(){img.src='/frame.jpg?t='+t+'&x='+Date.now();}"
+                   "img.onload=function(){setTimeout(tick,450);};img.onerror=function(){setTimeout(tick,1500);};tick();"
+                   "setTimeout(function(){location.reload();},45000);"
+                   "},12000);});</" + "script>")
             if "</head>" in data: data = data.replace("</head>", css + "</head>", 1)
             body = data.encode()
             self.send_response(200)
