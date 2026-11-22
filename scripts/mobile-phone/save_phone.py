@@ -25,8 +25,10 @@ def main():
         try:
             cur = conn.cursor()
             cur.execute(
-                "UPDATE phones_cloudphone SET viewer_url=%s, tunnel_url=COALESCE(%s, tunnel_url), phone_password=%s, "
-                "status='running', updated_at=now() WHERE phone_id=%s",
+                "UPDATE phones_cloudphone SET viewer_url=COALESCE(%s, viewer_url), "
+                "tunnel_url=COALESCE(%s, tunnel_url), phone_password=COALESCE(%s, phone_password), "
+                "status=CASE WHEN status IN ('deleting','deleted') THEN status ELSE 'running' END, "
+                "updated_at=now() WHERE phone_id=%s",
                 [want_url, os.environ.get("TUNNEL_URL") or None, want_pw, os.environ["PHONE_ID"]])
             if cur.rowcount == 0:
                 raise RuntimeError("no matching phone row yet")
@@ -36,7 +38,7 @@ def main():
             cur.execute("SELECT viewer_url, phone_password FROM phones_cloudphone WHERE phone_id=%s",
                         [os.environ["PHONE_ID"]])
             row = cur.fetchone()
-            if not row or row[0] != want_url or (want_pw and row[1] != want_pw):
+            if not row or (want_url and row[0] != want_url) or (want_pw and row[1] != want_pw):
                 raise RuntimeError("verification mismatch")
         finally:
             conn.close()

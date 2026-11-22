@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  NishCloudPhone - Android 9 in the official Android Emulator (NO QEMU).
-#  Speed design: the viewer + tunnel + saved Url/Password go live FIRST
-#  (seconds), the SDK/emulator setup happens after, and the phone boots
-#  behind an already-working screen page.
+#  NishCloudPhone - Android 11 in the official Android Emulator (NO QEMU).
+#  Speed design: the password-gated noVNC proxy + tunnel + Url/Password go
+#  live FIRST. The page shows a startup notice until the emulator's noVNC
+#  bridge is ready; both screen URLs then serve the real noVNC client.
 # =============================================================================
 set -euo pipefail
 
@@ -12,22 +12,16 @@ EDITION="android11"
 echo ">>> Android edition: $EDITION"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-mkdir -p "$WORKDIR_PHONE/bin"
+mkdir -p "$WORKDIR_PHONE"
 cd "$WORKDIR_PHONE"
-# bin is on PATH from the very start: the ffmpeg binary can land here later
-# and the already-running viewer will still find it (lookup happens per call).
-export PATH="$WORKDIR_PHONE/bin:$PATH"
-# Resolve the SDK location NOW (no installs yet) so the viewer launched
-# below inherits a PATH that actually contains adb - without this it
-# could not capture a single frame and users sat on "Connecting..." forever.
+# Resolve the SDK location NOW so the viewer launched below can use adb for
+# the dashboard's APK-install action. The phone screen itself is noVNC.
 SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
 
 # Viewer password (name kept for compatibility with the workflow env).
-# Workflow steps share no env, so phase 1 persists it (workspace-only
-# file, never printed, never uploaded) for phase 2 to pick back up -
-# otherwise the emulator phase would mint a second password and the
-# saved credentials would stop matching the running viewer.
+# Workflow steps share no env, so phase 1 persists it in the runner workspace
+# for phase 2; it is never printed, uploaded, or committed.
 PW_FILE="$WORKDIR_PHONE/.pw"
 if [ -z "${VNC_PASSWORD:-}" ] && [ -f "$PW_FILE" ]; then
   VNC_PASSWORD="$(cat "$PW_FILE")"
@@ -38,23 +32,26 @@ fi
 printf %s "$VNC_PASSWORD" > "$PW_FILE"
 export VNC_PASSWORD
 SERIAL="emulator-5554"
-
-# noVNC fallback stack (virtual display + VNC + web bridge) installs in
-# the BACKGROUND - startup speed is untouched; the fallback screen simply
-# comes online a little after the main screen.
-( sudo -n apt-get -o Acquire::Languages=none update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool >/dev/null 2>&1 ) &
-# ffmpeg as ONE static binary in the background (never blocks startup).
-if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x "$WORKDIR_PHONE/bin/ffmpeg" ]; then
-  ( curl -fsSL --retry 3 -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
-      && tar -xJf /tmp/ff.tar.xz -C /tmp && cp /tmp/ffmpeg-*-amd64-static/ffmpeg "$WORKDIR_PHONE/bin/ffmpeg" \
-      && chmod +x "$WORKDIR_PHONE/bin/ffmpeg" ) >/dev/null 2>&1 &
+NOVNC_PACKAGES=(xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool)
+novnc_ready() {
+  command -v Xvfb >/dev/null 2>&1 && command -v x11vnc >/dev/null 2>&1 \
+    && command -v websockify >/dev/null 2>&1 && [ -f /usr/share/novnc/vnc.html ] \
+    && [ -f /usr/share/novnc/vnc_lite.html ]
+}
+# Install the required screen stack in the background during phase 1 so it
+# overlaps with SDK preparation. Phase 2 verifies it and blocks/fails rather
+# than quietly falling back to a non-noVNC screen.
+if [ "${PHASE:-}" = "1" ] && ! novnc_ready; then
+  ( sudo -n apt-get -o Acquire::Languages=none update -qq \
+      && sudo -n apt-get install -y -qq --no-install-recommends "${NOVNC_PACKAGES[@]}" ) > novnc-install.log 2>&1 &
+  echo $! > novnc-install.pid
 fi
 
 # ------------------------------------------------------ live FIRST ----------
-# Screen page + tunnel + saved credentials BEFORE any slow SDK work, so the
-# dashboard shows Url/Password in well under a minute. The viewer retries
-# ADB on its own until the emulator appears.
+# Password-gated noVNC proxy + tunnel + saved credentials BEFORE SDK work.
+# The page shows a noVNC starting notice until the emulator's VNC bridge is up.
 LIVE_ALREADY=0
+TUNNEL_URL=""
 if [ "${PHASE:-}" = "2" ] && [ -f viewer.pid ] && kill -0 "$(cat viewer.pid)" 2>/dev/null \
    && [ -f cloudflared-viewer.pid ] && kill -0 "$(cat cloudflared-viewer.pid)" 2>/dev/null; then
   LIVE_ALREADY=1  # phase 1 already brought the screen service up
@@ -73,22 +70,16 @@ for _ in $(seq 1 45); do
   VIEWER_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-viewer.log | head -n1 || true)"
   [ -n "$VIEWER_URL" ] && break; sleep 2
 done
-TUNNEL_URL=""
-SAVED=0
 if [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
-  for _try in 1 2 3; do
-    VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
-      python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && { SAVED=1; break; }
-    sleep 10
-  done
+  VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+    python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
 fi
 fi
-if [ "$LIVE_ALREADY" = "0" ] && [ "$SAVED" != "1" ]; then
-  # Private backup channel (token-only access, never printed) so the
-  # dashboard still receives this phone even if the main save is down.
-  cat > "$WORKDIR_PHONE/cloud-phone-info.json" <<EOF
-{"phoneId":"${PHONE_ID:-manual}","edition":"${EDITION}","tunnelUrl":"${TUNNEL_URL}","viewerUrl":"${VIEWER_URL}","password":"${VNC_PASSWORD}"}
-EOF
+# Phase 1 may have started the viewer before the database was reachable.
+# Retry once during phase 2, still before the keep-alive polling step begins.
+if [ "$LIVE_ALREADY" = "1" ] && [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
+  VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$TUNNEL_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+    python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
 fi
 if [ "$LIVE_ALREADY" = "0" ]; then (
   while true; do
@@ -152,23 +143,38 @@ if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   CFG="$AVD_HOME_DIR/phone.avd/config.ini"
   sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=432/; s/^hw.lcd.height=.*/hw.lcd.height=768/; s/^hw.lcd.density=.*/hw.lcd.density=200/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
 fi
-# If the noVNC stack arrived in time, run the emulator WINDOWED on a
-# virtual display so x11vnc can serve it as the fallback screen. If not,
-# headless as before (main screen unaffected either way).
-USE_VNC=0
-for _ in $(seq 1 36); do
-  if command -v Xvfb >/dev/null 2>&1 && command -v x11vnc >/dev/null 2>&1; then USE_VNC=1; break; fi
-  sleep 5
-done
-echo ">>> Fallback (noVNC) stack: $([ "$USE_VNC" = "1" ] && echo ready || echo missing)"
-WIN_ARGS=(-no-window)
-if [ "$USE_VNC" = "1" ]; then
-  Xvfb :99 -screen 0 500x800x24 > xvfb.log 2>&1 &
-  echo $! > xvfb.pid
-  export DISPLAY=:99 QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
-  sleep 2
-  WIN_ARGS=(-no-nested-warning)
+# Both screen URLs require the official noVNC stack. Wait for phase 1's
+# background install; if it failed, retry synchronously instead of creating
+# a headless phone with a fake MJPEG/screenshot screen.
+if ! novnc_ready && [ -f novnc-install.pid ] && kill -0 "$(cat novnc-install.pid)" 2>/dev/null; then
+  for _ in $(seq 1 90); do
+    novnc_ready && break
+    kill -0 "$(cat novnc-install.pid)" 2>/dev/null || break
+    sleep 2
+  done
 fi
+if ! novnc_ready; then
+  echo ">>> Installing required noVNC stack..."
+  sudo -n apt-get -o Acquire::Languages=none update -qq
+  sudo -n apt-get install -y -qq --no-install-recommends "${NOVNC_PACKAGES[@]}"
+fi
+if ! novnc_ready; then
+  echo "Required noVNC packages are unavailable; refusing to start a phone without a real noVNC screen." >&2
+  tail -n 40 novnc-install.log 2>/dev/null || true
+  exit 1
+fi
+USE_VNC=1
+echo ">>> Required noVNC stack: ready"
+Xvfb :99 -screen 0 500x800x24 -nolisten tcp > xvfb.log 2>&1 &
+echo $! > xvfb.pid
+export DISPLAY=:99 QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
+sleep 2
+if ! kill -0 "$(cat xvfb.pid)" 2>/dev/null; then
+  echo "Xvfb failed to start; noVNC cannot display the phone." >&2
+  tail -n 40 xvfb.log 2>/dev/null || true
+  exit 1
+fi
+WIN_ARGS=(-no-nested-warning)
 ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
   nohup "$SDK/emulator/emulator" -avd phone "${WIN_ARGS[@]}" -no-audio -no-boot-anim \
@@ -177,39 +183,73 @@ launch_emu() {
     > emulator.log 2>&1 &
   echo $! > emulator.pid
 }
-# Launch with VERIFIED fallbacks: a windowed (noVNC) launch can crash on
-# some runners - if the process is not alive after a few seconds, fall
-# back to headless, then to software acceleration. Never exit the start
-# step leaving a dead pid behind for the keep-alive to trip over.
 emu_alive() { [ -f emulator.pid ] && kill -0 "$(cat emulator.pid)" 2>/dev/null; }
 launch_emu "$ACCEL"; sleep 12
-if ! emu_alive && [ "$USE_VNC" = "1" ]; then
-  WIN_ARGS=(); launch_emu "$ACCEL"; sleep 12  # retry windowed without the flag
+if ! emu_alive; then
+  WIN_ARGS=(); launch_emu "$ACCEL"; sleep 12  # retry without the optional flag, still windowed
 fi
-if ! emu_alive && [ "$USE_VNC" = "1" ]; then
-  USE_VNC=0; WIN_ARGS=(-no-window); launch_emu "$ACCEL"; sleep 10
-fi
-echo "$(date -u +%H:%M:%S) vnc_stack=$USE_VNC emulator_alive=$(emu_alive && echo yes || echo no)" >> supervisor.log 2>/dev/null || true
 if ! emu_alive && [ "$ACCEL" = "on" ]; then
-  ACCEL="off"; WIN_ARGS=(-no-window); USE_VNC=0; launch_emu off; sleep 8
+  ACCEL="off"; WIN_ARGS=(-no-nested-warning); launch_emu off; sleep 12
 fi
-if [ "$USE_VNC" = "1" ]; then
-  ( for _ in $(seq 1 60); do
-      # pin the emulator window to the top-left so VNC serves exactly
-      # the phone rectangle (no black side bars, screen fills the box)
-      xdotool search --name "mulator" windowmove 0 0 >/dev/null 2>&1 || true
-      # kill the nested-virtualization confirmation: Return straight
-      # into the warning window, then click where its OK button sits
-      if xdotool search --name "arning" >/dev/null 2>&1; then
-        xdotool search --name "arning" windowfocus key Return >/dev/null 2>&1 || true
-        xdotool search --name "arning" key Return >/dev/null 2>&1 || true
-        GEO="$(xdotool search --name "arning" getwindowgeometry 2>/dev/null | head -3 || true)"
-        sleep 1
-        xdotool search --name "arning" >/dev/null 2>&1 || break
-      fi
-      sleep 3
-    done ) >/dev/null 2>&1 &
+if ! emu_alive; then
+  echo "Windowed Android Emulator failed; refusing to fall back to a headless/non-noVNC screen." >&2
+  tail -n 60 emulator.log 2>/dev/null || true
+  exit 1
 fi
+echo "$(date -u +%H:%M:%S) vnc_stack=$USE_VNC emulator_alive=yes" >> supervisor.log 2>/dev/null || true
+(
+  for _ in $(seq 1 60); do
+    # Pin the emulator window to the top-left so VNC serves the phone area.
+    xdotool search --name "mulator" windowmove 0 0 >/dev/null 2>&1 || true
+    # Dismiss a nested-virtualization warning if the runner shows one.
+    if xdotool search --name "arning" >/dev/null 2>&1; then
+      xdotool search --name "arning" windowfocus key Return >/dev/null 2>&1 || true
+      xdotool search --name "arning" key Return >/dev/null 2>&1 || true
+      sleep 1
+      xdotool search --name "arning" >/dev/null 2>&1 || break
+    fi
+    sleep 3
+  done
+) >/dev/null 2>&1 &
+
+# Bring up both real noVNC endpoints as soon as the windowed emulator exists,
+# before ADB provisioning can take several minutes.
+: > vnc.log
+x11vnc -display :99 -forever -shared -noxdamage -threads -defer 10 -wait 10 -nowf -nowcr \
+  -clip 432x768+0+0 -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
+echo $! > vnc.pid
+: > websockify.log
+websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 > websockify.log 2>&1 &
+echo $! > websockify.pid
+vnc_ports_ready() {
+  python3 -c 'import socket; ss=[socket.create_connection(("127.0.0.1", p), timeout=1) for p in (5900,6080)]; [s.close() for s in ss]' >/dev/null 2>&1
+}
+for _ in $(seq 1 60); do
+  vnc_ports_ready && break
+  sleep 1
+done
+if ! vnc_ports_ready; then
+  echo "x11vnc/websockify did not become ready; refusing a phone without a noVNC screen." >&2
+  tail -n 40 vnc.log 2>/dev/null || true
+  tail -n 40 websockify.log 2>/dev/null || true
+  exit 1
+fi
+: > cloudflared-novnc.log
+cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:6080" > cloudflared-novnc.log 2>&1 &
+echo $! > cloudflared-novnc.pid
+NOVNC_URL=""
+for _ in $(seq 1 45); do
+  NOVNC_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-novnc.log | head -n1 || true)"
+  [ -n "$NOVNC_URL" ] && break
+  sleep 2
+done
+if [ -n "$NOVNC_URL" ] && [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
+  VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$NOVNC_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
+    python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 || true
+elif [ -z "$NOVNC_URL" ]; then
+  echo "Direct noVNC tunnel unavailable; the primary viewer tunnel remains active." >> supervisor.log
+fi
+
 adb start-server >/dev/null 2>&1 || true
 # soft keyboard must actually open when a text field is tapped
 sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 2>/dev/null || true
@@ -244,28 +284,6 @@ sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 
   $S input keyevent 3 >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6; do sleep 30; $S input keyevent 224 >/dev/null 2>&1 || true; $S svc wifi enable >/dev/null 2>&1 || true; done
 ) > setup-skip.log 2>&1 &
-
-# Fallback screen (real noVNC): serve the virtual display over VNC,
-# bridge it to the web, tunnel it, and store that URL on the phone row.
-if [ "$USE_VNC" = "1" ]; then
-  (
-    x11vnc -display :99 -forever -shared -noxdamage -threads -defer 10 -wait 10 -nowf -nowcr -clip 432x768+0+0 -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
-    websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 > websockify.log 2>&1 &
-    cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:6080" > cloudflared-novnc.log 2>&1 &
-    NOVNC_URL=""
-    for _ in $(seq 1 45); do
-      NOVNC_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-novnc.log | head -n1 || true)"
-      [ -n "$NOVNC_URL" ] && break; sleep 2
-    done
-    if [ -n "$NOVNC_URL" ] && [ -n "${AIVEN_DATABASE_URL:-}" ] && [ -n "${PHONE_ID:-}" ]; then
-      for _try in 1 2 3; do
-        VIEWER_URL="$VIEWER_URL" TUNNEL_URL="$NOVNC_URL" PHONE_PASSWORD="$VNC_PASSWORD" PHONE_ID="$PHONE_ID" \
-          python3 "$REPO_ROOT/scripts/mobile-phone/save_phone.py" >/dev/null 2>&1 && break
-        sleep 10
-      done
-    fi
-  ) >/dev/null 2>&1 &
-fi
 
 if [ "${START_ONLY:-0}" = "1" ]; then exit 0; fi
 DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))

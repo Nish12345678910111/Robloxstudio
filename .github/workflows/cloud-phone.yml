@@ -142,17 +142,10 @@ jobs:
             /usr/local/lib/android/sdk/system-images
           key: cloud-phone-emulator-v5-android11
 
-      - name: Publish phone info (private backup channel)
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloud-phone-info-${{ inputs.phone_id }}-${{ github.run_id }}
-          path: .phone-vm/cloud-phone-info.json
-          retention-days: 1
-          if-no-files-found: ignore
-
       - name: Keep phone alive (until session ends or run is cancelled)
         env:
           SESSION_MINUTES: ${{ inputs.session_minutes }}
+          PHONE_ID: ${{ inputs.phone_id }}
         run: |
           echo "Cloud phone created."
           echo "Keeping it alive for ${SESSION_MINUTES} minutes."
@@ -162,12 +155,10 @@ jobs:
             # whether this phone was deleted/stopped by its owner.
             if [ -f .phone-vm/.pw ]; then
               PT="$(printf %s "$(cat .phone-vm/.pw)" | sha256sum | cut -d' ' -f1)"
-              for SITE in "https://nishcloudphone.vercel.app" "https://nishproductions.netlify.app"; do
-                if curl -fs --max-time 10 -H "x-phone-token: $PT" "$SITE/api/phone-directive?id=${{ inputs.phone_id }}" 2>/dev/null | grep -q '"action":"stop"'; then
-                  echo "Owner deleted this phone - shutting down."
-                  exit 0
-                fi
-              done
+              if curl -fs --max-time 10 -H "x-phone-token: $PT" "https://nishproductions.pages.dev/api/phone-directive?id=${PHONE_ID}" 2>/dev/null | grep -q '"action":"stop"'; then
+                echo "Owner deleted this phone - shutting down."
+                exit 0
+              fi
             fi
             if [ -f .phone-vm/emulator.pid ] && ! kill -0 "$(cat .phone-vm/emulator.pid)" 2>/dev/null; then
               DEAD=$(( ${DEAD:-0} + 1 ))
