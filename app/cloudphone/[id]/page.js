@@ -6,6 +6,13 @@ import { dbConfigured, ensureSchema, getPhoneForUser } from "../../../lib/db";
 import crypto from "crypto";
 export const dynamic = "force-dynamic";
 export default async function CloudPhonePage({ params }) {
+  try { return await renderPhone(params); }
+  catch { return (<main className="wrap"><div className="notFound">
+    <div className="nfIcon">📱</div><h1>Cloud phone</h1>
+    <p className="muted">This page hit a snag loading your phone. Go back and open it again.</p>
+    <Link className="btnLink" href="/">← Back to my cloud phones</Link></div></main>); }
+}
+async function renderPhone(params) {
   const user = parseSession((await cookies()).get(COOKIE)?.value);
   if (!user) redirect("/login");
   const { id } = await params;
@@ -17,8 +24,8 @@ export default async function CloudPhonePage({ params }) {
     <Link className="btnLink" href="/">← Back to my cloud phones</Link></div></main>);
   const viewer = phone.viewer_url && phone.phone_password
     ? phone.viewer_url + "?t=" + crypto.createHash("sha256").update(phone.phone_password).digest("hex") : phone.viewer_url;
-  const screen = phone.viewer_url && phone.phone_password ? phone.viewer_url + "/vnc/vnc.html?password=" + encodeURIComponent(phone.phone_password) + "&scale=true" + (tok2 ? "&t=" + tok2 : "") : viewer;
   const tok2 = phone.phone_password ? crypto.createHash("sha256").update(phone.phone_password).digest("hex") : "";
+  const screen = phone.viewer_url && phone.phone_password ? phone.viewer_url + "/vnc/vnc.html?password=" + encodeURIComponent(phone.phone_password) + "&scale=true" + (tok2 ? "&t=" + tok2 : "") : viewer;
   const fallback = phone.tunnel_url ? phone.tunnel_url + "/vnc_lite.html?password=" + encodeURIComponent(phone.phone_password || "") + "&scale=true" : phone.viewer_url ? phone.viewer_url + "/vnc/vnc.html?password=" + encodeURIComponent(phone.phone_password || "") + "&scale=true" + (tok2 ? "&t=" + tok2 : "") : null;
   return (<main className="wrap">
     <header className="top"><div><h1>📱 Cloud Phone</h1>
