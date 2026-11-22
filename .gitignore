@@ -1,5 +1,6 @@
 node_modules/
 .next/
+cloudflare-pages-dist/
 .env*.local
 .phone-vm/
 cloud-phone-info.json

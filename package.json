@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "pages:build": "node scripts/cloudflare-pages-build.mjs"
   },
   "dependencies": {
     "next": "^16.4.5",
