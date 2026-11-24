@@ -18,8 +18,8 @@ Just create an account, tap **＋ New Cloud Phone**, and your phone appears on s
    - Build command: `npm run build`
    - Build output directory: `cloudflare-pages-dist`
    - Build environment variable: `NODE_VERSION=22.12.0` (the repo also has `.nvmrc`)
-3. In **Settings → Runtime**, set the compatibility date to `2026-11-07` (or a newer date you have tested) and enable the `nodejs_compat` compatibility flag. Leave Placement off unless you have a separate reason to change it. The `functions/` directory is detected automatically. **Do not add a Hyperdrive, D1, or other database binding.** The app connects directly to Aiven with `AIVEN_DATABASE_URL`.
-4. This repository intentionally has **no root Wrangler configuration file**. Cloudflare's dashboard notice means a Wrangler config would make regular runtime variables/configuration source-controlled and prevent adding plain-text variables in the dashboard. Keep runtime variables and secrets in **Settings → Variables and Secrets** instead. Add these as **Production secrets** (encrypted values):
+3. Keep the root `wrangler.jsonc` configuration file. It sets the Pages output directory and the `nodejs_compat` compatibility flag required to bundle the PostgreSQL driver used by Pages Functions. Leave Placement off unless you have a separate reason to change it. The `functions/` directory is detected automatically. **Do not add a Hyperdrive, D1, or other database binding.** The app connects directly to Aiven with `AIVEN_DATABASE_URL`.
+4. Keep runtime variables and secrets in **Settings → Variables and Secrets**; `wrangler.jsonc` contains no application secrets or runtime variables. Add these as **Production secrets** (encrypted values):
 
    - `AIVEN_DATABASE_URL` — the Aiven PostgreSQL connection URI, e.g. `postgres://USER:PASSWORD@HOST:PORT/defaultdb?sslmode=require`. Keep Aiven public access/TLS enabled as required by your Aiven service.
    - `SESSION_SECRET` — a long random secret (for example, generate one with `openssl rand -hex 32`).
