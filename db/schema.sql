@@ -2,8 +2,8 @@
 -- Run this once in Aiven (SQL editor / psql), OR just start the app:
 -- the app also runs CREATE TABLE IF NOT EXISTS automatically on boot.
 -- Server connection variable:  AIVEN_DATABASE_URL
-
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- gen_random_uuid() is built into supported PostgreSQL 13+ releases; no
+-- CREATE EXTENSION permission is required by the app's startup/login path.
 
 -- Users: name + username for login, password saved ONLY as a scrypt hash.
 CREATE TABLE IF NOT EXISTS users_cloudphone (

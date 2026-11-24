@@ -1,10 +1,11 @@
-import { makeSession } from "../_lib/auth.js";
+import { makeSession, sessionSecretConfigured } from "../_lib/auth.js";
 import { createUser, dbConfigured, ensureSchema, findUser, saveLastIp, touchLogin } from "../_lib/db.js";
 import { verifyPassword } from "../_lib/passwords.js";
 import { appendSessionCookie, clientIp, json, sameOrigin } from "../_lib/http.js";
 import { VPN_MSG, vpnBlocked } from "../_lib/netguard.js";
 
-const BUSY = "Many users are using free cloud phones, try again later.";
+const AUTH_BUSY = "Login is temporarily unavailable. Please try again shortly.";
+const SESSION_SETUP = "Login setup is incomplete: configure SESSION_SECRET (or ADMIN_PASSWORD) in the hosting environment.";
 const USER_RE = /^[A-Za-z0-9_.-]{3,32}$/;
 const hits = new Map();
 function throttled(key, limit = 12) {
@@ -13,6 +14,14 @@ function throttled(key, limit = 12) {
   return recent.length > limit;
 }
 function clean(value, max) { return String(value || "").trim().slice(0, max); }
+function logAuthFailure(stage, error) {
+  // Keep credentials, SQL, and connection strings out of logs; the safe code
+  // is enough to distinguish schema, database, and runtime failures.
+  console.error("[nishcloudphone auth]", stage, {
+    name: String(error?.name || "Error").slice(0, 40),
+    code: String(error?.code || "unknown").slice(0, 40),
+  });
+}
 
 async function sessionResponse(user, env) {
   const pub = { id: user.id, name: user.name, username: user.username, role: user.role };
@@ -23,12 +32,16 @@ async function sessionResponse(user, env) {
 export async function onRequestPost({ request, env }) {
   if (!sameOrigin(request)) return json({ error: "Request blocked." }, 403);
   if (!dbConfigured(env)) return json({ error: "Service setup is in progress. Please try again shortly." }, 503);
+  if (!sessionSecretConfigured(env)) return json({ error: SESSION_SETUP }, 503);
   const body = await request.json().catch(() => ({}));
   const mode = body.mode === "register" ? "register" : "login";
   const ip = clientIp(request);
   if (await vpnBlocked(ip)) return json({ error: VPN_MSG, vpn: true }, 403);
   if (mode === "register" && throttled(`register|${ip}`, 3)) return json({ error: "Too many sign-up attempts. Wait a minute and try again." }, 429);
-  try { await ensureSchema(env); } catch { return json({ error: BUSY }, 503); }
+  try { await ensureSchema(env); } catch (error) {
+    logAuthFailure("schema initialization failed", error);
+    return json({ error: AUTH_BUSY }, 503);
+  }
   try {
     if (mode === "register") {
       const name = clean(body.name, 60), username = clean(body.username, 32), password = String(body.password || "");
@@ -51,5 +64,8 @@ export async function onRequestPost({ request, env }) {
     if (!user || !await verifyPassword(password, user.password_hash)) return json({ error: "Wrong username or password." }, 401);
     await Promise.all([touchLogin(user.id, env), saveLastIp(user.id, ip, env)]).catch(() => {});
     return sessionResponse(user, env);
-  } catch { return json({ error: BUSY }, 503); }
+  } catch (error) {
+    logAuthFailure("login or session creation failed", error);
+    return json({ error: AUTH_BUSY }, 503);
+  }
 }

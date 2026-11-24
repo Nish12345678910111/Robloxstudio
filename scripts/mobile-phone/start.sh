@@ -33,18 +33,69 @@ printf %s "$VNC_PASSWORD" > "$PW_FILE"
 export VNC_PASSWORD
 SERIAL="emulator-5554"
 NOVNC_PACKAGES=(xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool)
+NOVNC_INSTALL_LOG="$WORKDIR_PHONE/novnc-install.log"
+NOVNC_INSTALL_PID="$WORKDIR_PHONE/novnc-install.pid"
+NOVNC_INSTALL_STATUS="$WORKDIR_PHONE/novnc-install.status"
 novnc_ready() {
   command -v Xvfb >/dev/null 2>&1 && command -v x11vnc >/dev/null 2>&1 \
     && command -v websockify >/dev/null 2>&1 && [ -f /usr/share/novnc/vnc.html ] \
     && [ -f /usr/share/novnc/vnc_lite.html ]
 }
+apt_get() {
+  # GitHub's Ubuntu image may be running apt-daily/unattended-upgrades when a
+  # job starts. Wait for dpkg's lock instead of failing or racing a second apt.
+  sudo -n apt-get -o DPkg::Lock::Timeout=180 -o Acquire::Retries=3 \
+    -o Acquire::Languages=none "$@"
+}
+install_novnc_stack() {
+  if novnc_ready; then return 0; fi
+  local attempt="$WORKDIR_PHONE/novnc-install-attempt.log"
+  : > "$attempt"
+  if apt_get install -y -qq --no-install-recommends "${NOVNC_PACKAGES[@]}" > "$attempt" 2>&1; then
+    cat "$attempt" >> "$NOVNC_INSTALL_LOG"
+    return 0
+  fi
+  cat "$attempt" >> "$NOVNC_INSTALL_LOG"
+  # Runner images normally include usable package indexes. Update only if the
+  # requested packages are absent from those indexes, not on every cold start.
+  if ! grep -Eqi 'Unable to locate package|has no installation candidate' "$attempt"; then
+    return 1
+  fi
+  echo "Package indexes are missing the noVNC packages; refreshing once." >> "$NOVNC_INSTALL_LOG"
+  apt_get update -qq >> "$NOVNC_INSTALL_LOG" 2>&1 || return 1
+  : > "$attempt"
+  if apt_get install -y -qq --no-install-recommends "${NOVNC_PACKAGES[@]}" > "$attempt" 2>&1; then
+    cat "$attempt" >> "$NOVNC_INSTALL_LOG"
+    return 0
+  fi
+  cat "$attempt" >> "$NOVNC_INSTALL_LOG"
+  return 1
+}
+wait_for_novnc_install() {
+  local max_seconds="$1" second install_pid=""
+  [ -f "$NOVNC_INSTALL_PID" ] && install_pid="$(cat "$NOVNC_INSTALL_PID")"
+  for ((second=0; second<max_seconds; second++)); do
+    [ -f "$NOVNC_INSTALL_STATUS" ] && return 0
+    if [ -n "$install_pid" ] && ! kill -0 "$install_pid" 2>/dev/null; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
 # Install the required screen stack in the background during phase 1 so it
-# overlaps with SDK preparation. Phase 2 verifies it and blocks/fails rather
-# than quietly falling back to a non-noVNC screen.
+# overlaps with SDK/cache preparation. Write a completion marker from the
+# background process: checking kill -0 alone can mistake a zombie shell for a
+# running installer and start a second apt-get against the same dpkg lock.
 if [ "${PHASE:-}" = "1" ] && ! novnc_ready; then
-  ( sudo -n apt-get -o Acquire::Languages=none update -qq \
-      && sudo -n apt-get install -y -qq --no-install-recommends "${NOVNC_PACKAGES[@]}" ) > novnc-install.log 2>&1 &
-  echo $! > novnc-install.pid
+  : > "$NOVNC_INSTALL_LOG"
+  rm -f "$NOVNC_INSTALL_STATUS" "$NOVNC_INSTALL_PID"
+  (
+    result=0
+    install_novnc_stack || result=$?
+    printf '%s\n' "$result" > "$NOVNC_INSTALL_STATUS.tmp"
+    mv "$NOVNC_INSTALL_STATUS.tmp" "$NOVNC_INSTALL_STATUS"
+    exit "$result"
+  ) >/dev/null 2>&1 &
+  echo $! > "$NOVNC_INSTALL_PID"
 fi
 
 # ------------------------------------------------------ live FIRST ----------
@@ -132,10 +183,16 @@ export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PA
 IMG_PKG="system-images;android-30;google_apis;x86_64"
 # Licenses + installs ONLY when something is actually missing (cache hits
 # skip all of this - no more sdkmanager noise/time on the fast path).
-if [ ! -x "$SDK/emulator/emulator" ] || [ ! -d "$SDK/system-images/android-30/google_apis/x86_64" ]; then
+if [ ! -x "$SDK/emulator/emulator" ] || [ ! -s "$SDK/system-images/android-30/google_apis/x86_64/system.img" ]; then
   yes | sdkmanager --licenses >/dev/null 2>&1 || true
   [ -x "$SDK/emulator/emulator" ] || sdkmanager "emulator" "platform-tools" >/dev/null
-  [ -d "$SDK/system-images/android-30/google_apis/x86_64" ] || sdkmanager "$IMG_PKG" >/dev/null
+  [ -s "$SDK/system-images/android-30/google_apis/x86_64/system.img" ] || sdkmanager "$IMG_PKG" >/dev/null
+fi
+# Let the workflow cache a complete emulator install even if a later
+# noVNC/emulator startup check fails. Never save a partial SDK download.
+if [ -x "$SDK/emulator/emulator" ] && [ -s "$SDK/system-images/android-30/google_apis/x86_64/system.img" ] \
+   && [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "sdk_cache_ready=true" >> "$GITHUB_OUTPUT"
 fi
 if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
@@ -144,23 +201,37 @@ if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=432/; s/^hw.lcd.height=.*/hw.lcd.height=768/; s/^hw.lcd.density=.*/hw.lcd.density=200/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
 fi
 # Both screen URLs require the official noVNC stack. Wait for phase 1's
-# background install; if it failed, retry synchronously instead of creating
-# a headless phone with a fake MJPEG/screenshot screen.
-if ! novnc_ready && [ -f novnc-install.pid ] && kill -0 "$(cat novnc-install.pid)" 2>/dev/null; then
-  for _ in $(seq 1 90); do
-    novnc_ready && break
-    kill -0 "$(cat novnc-install.pid)" 2>/dev/null || break
-    sleep 2
-  done
+# installer to finish completely, even if its first package files appeared;
+# never launch a second apt-get while the first process may own dpkg's lock.
+if [ -f "$NOVNC_INSTALL_PID" ] && [ ! -f "$NOVNC_INSTALL_STATUS" ]; then
+  echo ">>> Waiting for the noVNC package install started during phase 1..."
+  wait_for_novnc_install 180 || true
+fi
+if [ -f "$NOVNC_INSTALL_PID" ] && [ ! -f "$NOVNC_INSTALL_STATUS" ]; then
+  echo ">>> noVNC install is still running; waiting rather than racing dpkg..."
+  wait_for_novnc_install 120 || true
+fi
+if [ -f "$NOVNC_INSTALL_PID" ] && [ ! -f "$NOVNC_INSTALL_STATUS" ] \
+   && kill -0 "$(cat "$NOVNC_INSTALL_PID")" 2>/dev/null; then
+  echo "The original noVNC installer has not finished; refusing to start a competing apt-get." >&2
+  tail -n 40 "$NOVNC_INSTALL_LOG" 2>/dev/null || true
+  exit 1
 fi
 if ! novnc_ready; then
-  echo ">>> Installing required noVNC stack..."
-  sudo -n apt-get -o Acquire::Languages=none update -qq
-  sudo -n apt-get install -y -qq --no-install-recommends "${NOVNC_PACKAGES[@]}"
+  echo ">>> Installing/retrying the required noVNC stack..."
+  rm -f "$NOVNC_INSTALL_STATUS"
+  install_result=0
+  install_novnc_stack || install_result=$?
+  printf '%s\n' "$install_result" > "$NOVNC_INSTALL_STATUS"
+  if [ "$install_result" -ne 0 ] || ! novnc_ready; then
+    echo "Required noVNC packages are unavailable; refusing to start a phone without a real noVNC screen." >&2
+    tail -n 40 "$NOVNC_INSTALL_LOG" 2>/dev/null || true
+    exit 1
+  fi
 fi
 if ! novnc_ready; then
-  echo "Required noVNC packages are unavailable; refusing to start a phone without a real noVNC screen." >&2
-  tail -n 40 novnc-install.log 2>/dev/null || true
+  echo "Required noVNC stack did not become ready; no phone screen will be started." >&2
+  tail -n 40 "$NOVNC_INSTALL_LOG" 2>/dev/null || true
   exit 1
 fi
 USE_VNC=1

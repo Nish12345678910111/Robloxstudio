@@ -3,6 +3,7 @@ import { createPhoneRow, dbConfigured, deletePhoneRow, ensureSchema, linkRun, li
 import { cancelRun, deleteRun, dispatchPhone, findRunsByPhoneIds, getRunStatus, listPhones } from "../_lib/github.js";
 import { clientIp, json, sameOrigin } from "../_lib/http.js";
 import { VPN_MSG, vpnBlocked } from "../_lib/netguard.js";
+import { reconcilePhoneRuns } from "../_lib/phone-ownership.js";
 
 const BUSY = "Many users are using free cloud phones, try again later.";
 const MAX_FREE = 5;
@@ -33,7 +34,8 @@ export async function onRequestGet({ request, env }) {
       try { live = await listPhones(true, env); } catch { liveOk = false; }
     }
   }
-  const byId = new Map(live.map(phone => [phone.phoneId, phone]));
+  let reconciliation = reconcilePhoneRuns(rows, live);
+  const matchesByPhoneId = () => new Map(reconciliation.matched.map(({ row, run }) => [String(row.phone_id), run]));
   if (liveOk) {
     const oldRows = rows.filter(row => Date.now() - new Date(row.created_at).getTime() >= 24 * 3600 * 1000).slice(0, 5);
     let runsByPhone = new Map(), scanOk = !oldRows.length;
@@ -41,11 +43,12 @@ export async function onRequestGet({ request, env }) {
       try { runsByPhone = await findRunsByPhoneIds(oldRows.map(row => row.phone_id), env); scanOk = true; }
       catch { scanOk = false; }
     }
+    const rowRuns = matchesByPhoneId();
     let checked = 0;
     for (const row of oldRows) {
       if (checked >= 5) break;
       if (!scanOk) continue;
-      const run = byId.get(row.phone_id);
+      const run = rowRuns.get(String(row.phone_id));
       const runIds = new Set([...(runsByPhone.get(row.phone_id) || []), ...(row.run_id ? [String(row.run_id)] : []), ...(run?.runId ? [String(run.runId)] : [])]);
       if (!runIds.size) {
         // This row is at least a day old and the complete GitHub history scan
@@ -69,10 +72,12 @@ export async function onRequestGet({ request, env }) {
       await deletePhoneRow(row.phone_id, env).catch(() => {});
       rows.splice(rows.indexOf(row), 1);
     }
+    reconciliation = reconcilePhoneRuns(rows, live);
   }
 
+  const rowRuns = matchesByPhoneId();
   await Promise.all(rows.map(row => {
-    const run = byId.get(row.phone_id);
+    const run = rowRuns.get(String(row.phone_id));
     const persistedStatus = row.status === "deleting" ? "deleting" : run?.status;
     if (run && (String(row.run_id || "") !== String(run.runId) || row.status !== persistedStatus)) {
       return linkRun(row.phone_id, run.runId, persistedStatus, env).catch(() => {});
@@ -80,11 +85,11 @@ export async function onRequestGet({ request, env }) {
     return null;
   }));
   const phones = [];
-  for (const row of rows) {
-    const run = byId.get(row.phone_id);
+  for (const { row, run } of reconciliation.matched) {
+    const owner = row.owner_username || null;
     phones.push({
       phoneId: row.phone_id, runId: run?.runId || row.run_id || null,
-      edition: row.edition, owner: row.owner_username,
+      edition: row.edition, owner, ownerStatus: owner ? "verified" : "unavailable",
       status: run?.status || storedStatus(row.status),
       conclusion: run?.conclusion || null, createdAt: run?.createdAt || row.created_at,
       viewerUrl: row.viewer_url || run?.viewerUrl || null, updatedAt: run?.updatedAt || row.updated_at || null,
@@ -92,8 +97,9 @@ export async function onRequestGet({ request, env }) {
     });
   }
   if (user.role === "admin") {
-    const known = new Set(rows.map(row => row.phone_id));
-    for (const phone of live) if (!known.has(phone.phoneId) && phone.phoneId !== "…") phones.push({ ...phone, owner: "unknown" });
+    for (const phone of reconciliation.unmatched) {
+      phones.push({ ...phone, owner: null, ownerStatus: "unavailable" });
+    }
   }
   return json({ phones, totalPhones: phones.filter(phone => phone.status !== "busy").length, notice: liveOk ? null : BUSY });
 }

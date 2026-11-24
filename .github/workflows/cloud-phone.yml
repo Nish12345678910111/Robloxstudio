@@ -119,6 +119,7 @@ jobs:
           key: cloud-phone-emulator-v5-android11
 
       - name: Start Cloud Phone
+        id: start_phone
         env:
           PHONE_ID: ${{ inputs.phone_id }}
           PHASE: "2"
@@ -133,7 +134,8 @@ jobs:
           chmod +x scripts/mobile-phone/start.sh
           ./scripts/mobile-phone/start.sh
 
-      - name: Save Android Emulator to cache NOW
+      - name: Save Android Emulator to cache (including after a startup failure)
+        if: always() && steps.start_phone.outputs.sdk_cache_ready == 'true'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:

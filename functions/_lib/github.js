@@ -189,3 +189,24 @@ export async function getRunStatus(runId, env) {
   if (!response.ok) throw new Error("upstream busy");
   return (await response.json()).status;
 }
+
+// Report connectivity only. Token values never leave the server or enter the
+// response; each configured slot is tested independently and cached briefly.
+let healthCache = null, healthCacheAt = 0;
+export async function keyHealth(env) {
+  if (healthCache && Date.now() - healthCacheAt < 60000) return healthCache;
+  const slots = apiSlots(env);
+  const checks = await Promise.all(slots.map(async (slot, index) => {
+    let ok = false, status = null;
+    try {
+      const response = await raw(`/actions/workflows/${WORKFLOW(env)}/runs?event=workflow_dispatch&per_page=1`, {}, slot.tok, env);
+      ok = response.ok;
+      status = response.status;
+      await response.text().catch(() => "");
+    } catch {}
+    return { name: slot.name, configured: true, ok, status, active: index === goodSlot };
+  }));
+  healthCache = checks;
+  healthCacheAt = Date.now();
+  return checks;
+}
