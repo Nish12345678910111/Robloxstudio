@@ -44,7 +44,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
     } catch {}
   }
   return (<section className="card">
-    <header className="cardHead"><div><h3>📱 Cloud Phone · Android 11</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : ""}</span></div>
+    <header className="cardHead"><div><h3>📱 Cloud Phone · Android 11</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : !p.owner && user.role === "admin" && p.ownerStatus === "unavailable" ? " · owner unavailable (unlinked run)" : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
       <p><b>Url -</b> {p.viewerUrl ? <a href={frameUrl || p.viewerUrl} target="_blank" rel="noreferrer">{p.viewerUrl}</a> : "waiting for connection…"}</p>
@@ -73,6 +73,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
 }
 export default function Dashboard({ user, tokenReady }) {
   const [phones, setPhones] = useState([]), [creating, setCreating] = useState(false);
+  const [health, setHealth] = useState(null);
   const [toasts, setToasts] = useState([]);
   const toastId = useRef(0);
   const pushToast = useCallback((kind, text) => {
@@ -105,6 +106,18 @@ export default function Dashboard({ user, tokenReady }) {
     else { const d = await r.json().catch(() => ({})); setNotice(d.error || "Many users are using free cloud phones, try again later."); }
   }, [setNotice]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    const check = async () => {
+      const response = await fetch("/api/keys", { cache: "no-store" }).catch(() => null);
+      if (!response?.ok) return;
+      const data = await response.json().catch(() => null);
+      if (active && data) setHealth(data);
+    };
+    check();
+    const interval = setInterval(() => { if (!document.hidden) check(); }, 45000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
   // Poll fast (6s) while anything is starting/running so state changes -
   // especially errors - appear almost instantly; slow (20s) when idle.
   useEffect(() => { const active = phones.some(x => !x.conclusion && x.status !== "completed");
@@ -181,6 +194,10 @@ export default function Dashboard({ user, tokenReady }) {
       <button className="primary wide" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button>
       <button className="ghost wide" onClick={logout}>Log out</button>
       <button className="danger wide" onClick={delAccount}>🗑 Delete my account</button>
+      {health && <div className="health"><b>🔌 Connection</b>
+        <span>Database: {health.db ? "🟢 connected" : `🔴 not connected${health.dbCode ? ` (${health.dbCode})` : ""}`}</span>
+        {(health.keys || []).filter(key => key.configured).map(key => <span key={key.name}>{key.name}: {key.ok ? (key.active ? "🟢 active" : "🟢 working") : `🔴 unavailable${key.status ? ` (HTTP ${key.status})` : ""}`}</span>)}
+      </div>}
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
     </aside>
     <main className="wrap">

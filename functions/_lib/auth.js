@@ -7,6 +7,7 @@ const toBase64Url = bytes => btoa(String.fromCharCode(...bytes)).replaceAll("+",
 const fromBase64Url = value => Uint8Array.from(atob(value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - value.length % 4) % 4)), c => c.charCodeAt(0));
 
 function secret(env) { return String(env.SESSION_SECRET || env.ADMIN_PASSWORD || ""); }
+export const sessionSecretConfigured = env => Boolean(secret(env));
 async function hmacKey(value) {
   return crypto.subtle.importKey("raw", encoder.encode(value), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }

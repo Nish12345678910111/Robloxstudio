@@ -64,7 +64,6 @@ async function query(env, sql, params = []) {
 }
 
 const DDL = [
-  `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
   `CREATE TABLE IF NOT EXISTS users_cloudphone (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL,
       username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
@@ -212,8 +211,8 @@ export async function createPhoneRow(ownerId, phoneId, edition, env, maxActive =
 
 export async function listPhoneRows(user, env) {
   const { rows } = user.role === "admin"
-    ? await query(env, `SELECT p.*,u.username AS owner_username FROM phones_cloudphone p JOIN users_cloudphone u ON u.id=p.owner_id WHERE p.deleted_at IS NULL ORDER BY p.created_at DESC`)
-    : await query(env, `SELECT p.*,u.username AS owner_username FROM phones_cloudphone p JOIN users_cloudphone u ON u.id=p.owner_id WHERE p.deleted_at IS NULL AND p.owner_id=$1 ORDER BY p.created_at DESC`, [user.id]);
+    ? await query(env, `SELECT p.*,u.username AS owner_username FROM phones_cloudphone p LEFT JOIN users_cloudphone u ON u.id=p.owner_id WHERE p.deleted_at IS NULL ORDER BY p.created_at DESC`)
+    : await query(env, `SELECT p.*,u.username AS owner_username FROM phones_cloudphone p LEFT JOIN users_cloudphone u ON u.id=p.owner_id WHERE p.deleted_at IS NULL AND p.owner_id=$1 ORDER BY p.created_at DESC`, [user.id]);
   return rows;
 }
 export async function listOwnerPhoneRows(ownerId, env) {
@@ -236,7 +235,7 @@ export async function deletePhoneRow(phoneId, env) { return query(env, `DELETE F
 export async function markPhoneDeletedByRun(runId, env) { return query(env, `DELETE FROM phones_cloudphone WHERE run_id=$1`, [runId]); }
 export async function getPhoneForUser(user, id, env) {
   const { rows } = await query(env,
-    `SELECT p.*,u.username AS owner_username FROM phones_cloudphone p JOIN users_cloudphone u ON u.id=p.owner_id
+    `SELECT p.*,u.username AS owner_username FROM phones_cloudphone p LEFT JOIN users_cloudphone u ON u.id=p.owner_id
      WHERE p.deleted_at IS NULL AND (p.phone_id=$1 OR p.run_id::text=$1) AND ($2 OR p.owner_id=$3) LIMIT 1`,
     [id, user.role === "admin", user.id]);
   return rows[0] || null;
