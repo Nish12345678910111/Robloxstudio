@@ -14,13 +14,28 @@ function throttled(key, limit = 12) {
   return recent.length > limit;
 }
 function clean(value, max) { return String(value || "").trim().slice(0, max); }
+const safeLogText = value => String(value || "")
+  .replace(/postgres(?:ql)?:\/\/[^\s\"'<>]+/gi, "[redacted database URL]")
+  .replace(/\b(password|passwd|token|authorization)\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]")
+  .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/gi, "[redacted token]")
+  .replace(/\s+/g, " ").trim().slice(0, 200);
+
+export function safeAuthErrorDetails(error) {
+  const safeField = (value, fallback) => String(value || fallback).replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 40);
+  const details = {
+    name: safeField(error?.name, "Error"),
+    code: safeField(error?.code, "unknown"),
+    message: safeLogText(error?.message) || "No error message provided",
+  };
+  const cause = safeLogText(error?.cause?.message);
+  if (cause) details.cause = cause;
+  return details;
+}
+
 function logAuthFailure(stage, error) {
-  // Keep credentials, SQL, and connection strings out of logs; the safe code
-  // is enough to distinguish schema, database, and runtime failures.
-  console.error("[nishcloudphone auth]", stage, {
-    name: String(error?.name || "Error").slice(0, 40),
-    code: String(error?.code || "unknown").slice(0, 40),
-  });
+  // Include a bounded, redacted message/cause so an unclassified runtime
+  // failure can be diagnosed without logging SQL values or connection secrets.
+  console.error("[nishcloudphone auth]", stage, safeAuthErrorDetails(error));
 }
 
 async function sessionResponse(user, env) {
