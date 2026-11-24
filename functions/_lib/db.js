@@ -3,6 +3,7 @@ import { hashPassword } from "./passwords.js";
 
 const root = globalThis;
 const pools = root.__ncpPagesPools || (root.__ncpPagesPools = new Map());
+const schemaRuns = root.__ncpPagesSchemaRuns || (root.__ncpPagesSchemaRuns = new Map());
 const dbUrl = env => String(env.AIVEN_DATABASE_URL || env.DATABASE_URL || "");
 export const dbConfigured = env => Boolean(dbUrl(env));
 
@@ -23,7 +24,10 @@ function pool(env) {
   const p = new Pool({
     connectionString, ...(ssl ? { ssl } : {}),
     max: 1, idleTimeoutMillis: 5000, connectionTimeoutMillis: 10000,
-    query_timeout: 12000, options: "-c idle_session_timeout=60s",
+    query_timeout: 12000,
+    // Workers may suspend idle timers; expire server-side sessions promptly so
+    // abandoned isolates do not accumulate idle PostgreSQL backends.
+    options: "-c idle_session_timeout=30s",
     application_name: "nishcloudphone-pages", allowExitOnIdle: true,
   });
   p.on("error", () => {});
@@ -41,7 +45,19 @@ function isConnectionError(error) {
 async function resetPool(env) {
   const cs = dbUrl(env), old = pools.get(cs);
   pools.delete(cs);
-  if (old) { old.__ncpSchemaReady = null; try { await old.end(); } catch {} }
+  if (old) { try { await old.end(); } catch {} }
+}
+
+// Retry one idempotent operation after a dropped PostgreSQL connection. Never
+// use this for arbitrary writes unless their conflict handling makes replay safe.
+export async function retryConnectionOnce(operation, onRetry) {
+  try { return await operation(); }
+  catch (error) {
+    if (!isConnectionError(error)) throw error;
+    await onRetry?.(error);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    return operation();
+  }
 }
 
 // A connection can fail after PostgreSQL has committed a mutation but before
@@ -90,23 +106,35 @@ export async function dbHealth(env) {
   catch (e) { return { ok: false, code: String(e.code || "db-error").slice(0, 40) }; }
 }
 
+async function initializeSchema(env) {
+  const client = await pool(env).connect();
+  let releaseError;
+  try {
+    await client.query("SET lock_timeout = '4s'");
+    for (const sql of DDL) await client.query(sql);
+  } catch (error) {
+    if (isConnectionError(error)) releaseError = error;
+    throw error;
+  } finally { client.release(releaseError); }
+  await ensureAdmin(env);
+  await query(env, "SELECT 1 FROM phones_cloudphone LIMIT 1");
+}
+
 export async function ensureSchema(env) {
-  const p = pool(env);
-  if (p.__ncpSchemaReady) return p.__ncpSchemaReady;
-  p.__ncpSchemaReady = (async () => {
-    const client = await p.connect();
-    let releaseError;
-    try {
-      await client.query("SET lock_timeout = '4s'");
-      for (const sql of DDL) await client.query(sql);
-    } catch (error) {
-      if (isConnectionError(error)) releaseError = error;
-      throw error;
-    } finally { client.release(releaseError); }
-    await ensureAdmin(env);
-    await query(env, "SELECT 1 FROM phones_cloudphone LIMIT 1");
-  })().catch(error => { p.__ncpSchemaReady = null; throw error; });
-  return p.__ncpSchemaReady;
+  const cs = dbUrl(env);
+  if (!cs) throw new Error("Database is not configured");
+  if (schemaRuns.has(cs)) return schemaRuns.get(cs);
+
+  // DDL is idempotent; a brief Aiven restart/OOM disconnect can safely retry
+  // once with a fresh pool instead of failing the user's first login attempt.
+  const ready = retryConnectionOnce(() => initializeSchema(env), () => resetPool(env));
+  schemaRuns.set(cs, ready);
+  try { await ready; }
+  catch (error) {
+    if (schemaRuns.get(cs) === ready) schemaRuns.delete(cs);
+    throw error;
+  }
+  return ready;
 }
 
 export async function ensureAdmin(env) {
