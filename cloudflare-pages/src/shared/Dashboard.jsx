@@ -71,7 +71,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
     </footer>
   </section>);
 }
-export default function Dashboard({ user, tokenReady }) {
+export default function Dashboard({ user, tokenReady, adSlot = null }) {
   const [phones, setPhones] = useState([]), [creating, setCreating] = useState(false);
   const [health, setHealth] = useState(null);
   const [toasts, setToasts] = useState([]);
@@ -203,6 +203,7 @@ export default function Dashboard({ user, tokenReady }) {
     <main className="wrap">
     <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 · auto WiFi · straight to home screen</p></div>
       </header>
+    {adSlot}
     {!tokenReady && <p className="warn">⏳ Cloud phones are busy right now — Many users are using free cloud phones, try again later.</p>}
     <div className="toasts">{toasts.map(t => <div key={t.id} className={"toast " + t.kind} onClick={() => setToasts(ts => ts.filter(x => x.id !== t.id))}>{t.kind === "warn" ? "⚠️ " : ""}{t.text}</div>)}</div>
     <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
