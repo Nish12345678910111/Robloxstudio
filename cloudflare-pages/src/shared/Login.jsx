@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-export default function Login({ configured }) {
+export default function Login({ configured, adSlot = null }) {
   const [mode, setMode] = useState("login");
   const [name, setName] = useState(""), [username, setUsername] = useState(""), [pw, setPw] = useState("");
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
@@ -13,7 +13,7 @@ export default function Login({ configured }) {
       body: JSON.stringify(mode === "register" ? { mode, name, username, password: pw, agree } : { mode, username, password: pw }) }).catch(() => null);
     const d = await r?.json().catch(() => ({})) || {};
     if (r?.ok) location.reload(); else { setErr(d.error || "The service is temporarily unavailable. Please try again."); setBusy(false); } }
-  return (<main className="loginWrap"><form className="loginCard" onSubmit={go}>
+  const form = (<form className="loginCard" onSubmit={go}>
     <div className="logo">☁️📱</div><h1>NishCloudPhone</h1>
     <p className="muted">{mode === "register" ? "Create your free account" : "Welcome back — login to your cloud phones"}</p>
     {!configured && <p className="warn">Service setup is in progress — please try again shortly.</p>}
@@ -29,5 +29,6 @@ export default function Login({ configured }) {
       : <>New here? <a href="#" onClick={e => { e.preventDefault(); setMode("register"); setErr(""); }}>Create account</a></>}</p>
     <p className="tiny">🔒 Passwords are stored only as secure hashes. Max 5 free cloud phones per account.</p>
     <p className="tiny"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a><br />Created by <b>nishgamerr</b></p>
-  </form></main>);
+  </form>);
+  return (<main className="loginWrap">{adSlot ? <div className="loginStack">{form}{adSlot}</div> : form}</main>);
 }

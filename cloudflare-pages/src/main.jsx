@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Dashboard from "./shared/Dashboard.jsx";
+import HilltopAd from "./shared/HilltopAd.jsx";
 import Login from "./shared/Login.jsx";
 import PhoneRoute from "./shared/PhoneRoute.jsx";
 import LegalRoute from "./shared/LegalRoute.jsx";
@@ -32,7 +33,7 @@ function LoginRoute() {
   }, []);
   if (!result) return <Loading text="Preparing secure login…" />;
   if (result.vpn) return <Problem text="This page is disabled while a VPN or proxy is on. Turn it off and reload." action="Reload" />;
-  return <Login configured={result.configured} />;
+  return <Login configured={result.configured} adSlot={<HilltopAd />} />;
 }
 
 function DashboardRoute() {
@@ -52,7 +53,7 @@ function DashboardRoute() {
   if (state.loading) return <Loading />;
   if (state.vpn) return <Problem text="This page is disabled while a VPN or proxy is on. Turn it off and reload." action="Reload" />;
   if (state.error) return <Problem />;
-  return <Dashboard user={state.user} tokenReady={state.tokenReady} />;
+  return <Dashboard user={state.user} tokenReady={state.tokenReady} adSlot={<HilltopAd />} />;
 }
 
 function App() {
