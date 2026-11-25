@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Password-gated reverse proxy for the official noVNC web client.
 
-The phone screen is served by x11vnc + websockify + noVNC. This process only
-adds the phone-password gate, proxies the noVNC page/assets/WebSocket, and
-handles APK installation from the dashboard. It deliberately has no MJPEG,
-screenshot, or alternate screen renderer: both exposed screens use noVNC.
+scrcpy mirrors the Android display into Xvfb; x11vnc + websockify carry that
+screen and the noVNC client's input. This process only adds the phone-password
+gate, proxies the noVNC page/assets/WebSocket, and handles APK installation.
+It deliberately has no MJPEG or screenshot endpoint: both exposed screens use
+noVNC for their remote display and controls.
 """
 import hashlib
 import hmac
@@ -21,6 +22,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 PORT = int(os.environ.get("VIEWER_PORT", "8081"))
 VNC_BACKEND = ("127.0.0.1", int(os.environ.get("NOVNC_PORT", "6080")))
+SCREEN_READY_FILE = os.environ.get("PHONE_SCREEN_READY_FILE", "")
 PASSWORD = os.getenv("PHONE_PASSWORD", "")
 SERIAL = os.environ.get("ADB_SERIAL", "emulator-5554")
 TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest() if PASSWORD else ""
@@ -56,6 +58,10 @@ STARTING_PAGE = """<!doctype html><html><head><meta charset=utf-8>
 
 
 def vnc_up():
+    # Keep the authenticated viewer on its startup page until the Android-only
+    # scrcpy window is ready; otherwise an early connection exposes Xvfb/blank.
+    if SCREEN_READY_FILE and not os.path.isfile(SCREEN_READY_FILE):
+        return False
     try:
         with socket.create_connection(VNC_BACKEND, timeout=1):
             return True

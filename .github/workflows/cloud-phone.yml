@@ -162,6 +162,9 @@ jobs:
                 exit 0
               fi
             fi
+            if [ ! -f .phone-vm/scrcpy.pid ] || ! kill -0 "$(cat .phone-vm/scrcpy.pid)" 2>/dev/null; then
+              echo "phone screen mirror stopped"; exit 1
+            fi
             if [ -f .phone-vm/emulator.pid ] && ! kill -0 "$(cat .phone-vm/emulator.pid)" 2>/dev/null; then
               DEAD=$(( ${DEAD:-0} + 1 ))
               # 3 consecutive dead checks (~45s) before declaring it gone -
