@@ -237,6 +237,25 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 return self._send(200, LOGIN_PAGE)
             return self._send(401, "login first")
+        if path == "/crash-log":
+            cors = {"Access-Control-Allow-Origin": "*"}
+            try:
+                result = subprocess.run(
+                    [ADB, "-s", SERIAL, "logcat", "-b", "crash", "-d", "-t", "250", "-v", "time"],
+                    capture_output=True, text=True, timeout=15, check=False)
+            except subprocess.TimeoutExpired:
+                return self._send(504, "Timed out reading the phone crash log.",
+                                  "text/plain; charset=utf-8", cors)
+            except Exception:
+                return self._send(502, "Could not read the phone crash log.",
+                                  "text/plain; charset=utf-8", cors)
+            if result.returncode != 0:
+                return self._send(502, "Could not read the phone crash log. Confirm the phone is running.",
+                                  "text/plain; charset=utf-8", cors)
+            body = (result.stdout or "").strip()
+            if not body:
+                body = "No Android crash entries yet. Reproduce the force-close, then reload this page."
+            return self._send(200, body[-64 * 1024:], "text/plain; charset=utf-8", cors)
         if not vnc_up():
             return self._send(503, STARTING_PAGE)
         if is_websocket:
@@ -316,7 +335,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error:
             output = f"install error: {error}"
         if "Success" in output:
-            message, ok = "App installed - check the phone's app drawer.", True
+            message, ok = "App installed. Open it, reproduce the force-close, then download the timestamped crash log.", True
         elif "NO_MATCHING_ABIS" in output or "INSTALL_FAILED_NO_MATCHING" in output:
             message, ok = "This APK is built for a different processor, so this phone cannot run it.", False
         elif "INSTALL_FAILED_ALREADY_EXISTS" in output:
