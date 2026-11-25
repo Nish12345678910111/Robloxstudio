@@ -3,6 +3,7 @@ import { createUser, dbConfigured, ensureSchema, findUser, saveLastIp, touchLogi
 import { verifyPassword } from "../_lib/passwords.js";
 import { appendSessionCookie, clientIp, json, sameOrigin } from "../_lib/http.js";
 import { VPN_MSG, vpnBlocked } from "../_lib/netguard.js";
+import { safeDatabaseErrorDetails } from "../_lib/db-diagnostics.js";
 
 const AUTH_BUSY = "Login is temporarily unavailable. Please try again shortly.";
 const SESSION_SETUP = "Login setup is incomplete: configure SESSION_SECRET (or ADMIN_PASSWORD) in the hosting environment.";
@@ -14,27 +15,13 @@ function throttled(key, limit = 12) {
   return recent.length > limit;
 }
 function clean(value, max) { return String(value || "").trim().slice(0, max); }
-const safeLogText = value => String(value || "")
-  .replace(/postgres(?:ql)?:\/\/[^\s\"'<>]+/gi, "[redacted database URL]")
-  .replace(/\b(password|passwd|token|authorization)\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]")
-  .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/gi, "[redacted token]")
-  .replace(/\s+/g, " ").trim().slice(0, 200);
-
 export function safeAuthErrorDetails(error) {
-  const safeField = (value, fallback) => String(value || fallback).replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 40);
-  const details = {
-    name: safeField(error?.name, "Error"),
-    code: safeField(error?.code, "unknown"),
-    message: safeLogText(error?.message) || "No error message provided",
-  };
-  const cause = safeLogText(error?.cause?.message);
-  if (cause) details.cause = cause;
-  return details;
+  return safeDatabaseErrorDetails(error);
 }
 
 function logAuthFailure(stage, error) {
-  // Include a bounded, redacted message/cause so an unclassified runtime
-  // failure can be diagnosed without logging SQL values or connection secrets.
+  // Log the real driver/SQLSTATE code when present, and a clearly marked
+  // classification when the runtime only exposes a generic socket error.
   console.error("[nishcloudphone auth]", stage, safeAuthErrorDetails(error));
 }
 
