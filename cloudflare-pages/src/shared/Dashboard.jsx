@@ -43,6 +43,36 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
       else await boxRef.current?.requestFullscreen();
     } catch {}
   }
+  async function downloadCrashLog() {
+    if (!p.viewerUrl) return;
+    onToast?.("ok", "Reading Android crash log…");
+    try {
+      const url = new URL(p.viewerUrl.replace(/\/+$/, "") + "/crash-log");
+      url.searchParams.set(tok ? "t" : "password", tok || p.password || "");
+      const response = await fetch(url);
+      const log = await response.text();
+      if (!response.ok) {
+        onToast?.("warn", log.slice(0, 180) || "Could not read the Android crash log.");
+        return;
+      }
+      if (log.startsWith("No Android crash entries yet.")) {
+        onToast?.("warn", "No crash entry yet. Reproduce the force-close, then try again.");
+        return;
+      }
+      const objectUrl = URL.createObjectURL(new Blob([log], { type: "text/plain;charset=utf-8" }));
+      const link = document.createElement("a");
+      const phoneId = String(p.phoneId || "phone").replace(/[^a-z0-9_-]/gi, "-");
+      link.href = objectUrl;
+      link.download = `cloud-phone-${phoneId}-crash-log.txt`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      onToast?.("ok", "Crash log downloaded. Attach it here so I can identify the cause.");
+    } catch {
+      onToast?.("warn", "Could not reach the phone to read its crash log.");
+    }
+  }
   return (<section className="card">
     <header className="cardHead"><div><h3>📱 Cloud Phone · Android 11</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : !p.owner && user.role === "admin" && p.ownerStatus === "unavailable" ? " · owner unavailable (unlinked run)" : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
@@ -64,6 +94,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
     <footer className="cardFoot">
       <span className="footLinks"><a href={`/cloudphone/${encodeURIComponent(p.phoneId)}`}>Open phone ↗</a>{p.tunnelUrl ? <a href={p.tunnelUrl + "/vnc.html?autoconnect=true&resize=scale&host=&port=0&password=" + encodeURIComponent(p.password || "")} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : p.viewerUrl ? <a href={proxyScreen || p.viewerUrl} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a> : null}</span>
       <span className="footBtns">
+        {live ? <button type="button" title="Download the latest Android crash trace after reproducing the problem" onClick={downloadCrashLog}>📄 Crash log</button> : null}
         {live ? <label className="apkBtn">⬆ Install APK<input type="file" accept=".apk,application/vnd.android.package-archive" hidden onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; onToast?.("ok", "Installing " + f.name + " ..."); try { const r = await fetch(p.viewerUrl + "/install-apk?t=" + (tok || ""), { method: "POST", body: f }); const j = await r.json().catch(() => ({})); onToast?.(j.ok ? "ok" : "warn", j.message || "Install finished."); } catch { onToast?.("warn", "Could not reach the phone to install."); } }} /></label> : null}
         {(p.status === "in_progress" || p.status === "queued") && <button className="stop" onClick={() => onStop(p.runId)}>⏹ Stop Cloud Phone</button>}
         <button className="del" onClick={() => onDelete(p)}>🗑 Delete Cloud Phone</button>

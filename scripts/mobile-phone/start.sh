@@ -8,6 +8,12 @@
 set -euo pipefail
 
 SESSION_MINUTES="${SESSION_MINUTES:-300}"
+RAM_MB="${RAM_MB:-8192}"
+CPU_CORES="${CPU_CORES:-4}"
+DISK_GB="${DISK_GB:-32}"
+case "$RAM_MB" in 4096|8192|12288) ;; *) echo "Unsupported RAM_MB: $RAM_MB" >&2; exit 2 ;; esac
+case "$CPU_CORES" in 2|4) ;; *) echo "Unsupported CPU_CORES: $CPU_CORES" >&2; exit 2 ;; esac
+case "$DISK_GB" in 16|32) ;; *) echo "Unsupported DISK_GB: $DISK_GB" >&2; exit 2 ;; esac
 EDITION="android11"
 echo ">>> Android edition: $EDITION"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
@@ -216,12 +222,12 @@ set_avd_config() {
 }
 # Configure the guest before the emulator reads config.ini. In particular,
 # disabling the hard keyboard makes Android's own on-screen IME appear on tap.
-set_avd_config hw.ramSize 8192M
-set_avd_config disk.dataPartition.size 32G
+set_avd_config hw.ramSize "${RAM_MB}M"
+set_avd_config disk.dataPartition.size "${DISK_GB}G"
 set_avd_config hw.lcd.width 432
 set_avd_config hw.lcd.height 768
 set_avd_config hw.lcd.density 200
-set_avd_config hw.cpu.ncore 4
+set_avd_config hw.cpu.ncore "$CPU_CORES"
 set_avd_config hw.keyboard no
 # Both screen URLs require the official noVNC stack. Wait for phase 1's
 # installer to finish completely, even if its first package files appeared;
@@ -273,8 +279,9 @@ launch_emu() {
   # Run the emulator headlessly so its host warning dialogs and control panel
   # cannot leak into the phone screen. scrcpy below displays the guest only.
   nohup "$SDK/emulator/emulator" -avd phone -no-window -no-audio -no-boot-anim \
-    -gpu swiftshader_indirect -accel "$1" -memory 4096 -cores 4 -partition-size 32768 \
-    -port 5554 -no-snapshot -wipe-data -netdelay none -netspeed full -camera-back none -camera-front none -no-metrics \
+    -gpu swiftshader_indirect -accel "$1" -memory "$RAM_MB" -cores "$CPU_CORES" \
+    -partition-size "$((DISK_GB * 1024))" -port 5554 -no-snapshot -wipe-data \
+    -netdelay none -netspeed full -camera-back none -camera-front none -no-metrics \
     > emulator.log 2>&1 &
   echo $! > emulator.pid
 }
