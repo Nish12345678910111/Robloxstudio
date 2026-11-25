@@ -44,4 +44,8 @@ For local Pages development, `npm run dev` applies the compatibility date and `n
 
 Vercel uses `vercel.json` and `npm run vercel:build`. It hosts the shared API handlers and connects directly to the same Aiven database with `AIVEN_DATABASE_URL`; Cloudflare Pages continues to serve its own Vite-built UI. This keeps owner matching, login behavior, and the official noVNC viewer consistent while leaving ads Cloudflare-only.
 
+## Cloud Phone display and input
+
+The GitHub workflow runs Android Emulator headlessly and mirrors only the device display with scrcpy into Xvfb. The official noVNC client over x11vnc/websockify remains the remote viewer and input path, so the emulator's host warning dialogs and control toolbar are not part of the phone screen. The AVD disables its hard keyboard so Android's on-screen keyboard opens on tap; scrcpy control and clipboard autosync stay enabled for noVNC keyboard and clipboard input.
+
 Phone starts still need a GitHub-hosted runner to boot and initialize Android. The SDK cache reduces repeat startup work after its first successful preparation, but a cold runner cannot start literally instantly.

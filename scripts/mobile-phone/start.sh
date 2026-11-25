@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  NishCloudPhone - Android 11 in the official Android Emulator (NO QEMU).
-#  Speed design: the password-gated noVNC proxy + tunnel + Url/Password go
-#  live FIRST. The page shows a startup notice until the emulator's noVNC
-#  bridge is ready; both screen URLs then serve the real noVNC client.
+#  NishCloudPhone - Android 11 in the official Android Emulator (headless).
+#  scrcpy renders only the Android display into Xvfb; official noVNC serves
+#  that clean screen and forwards keyboard/clipboard input to the phone.
+#  The password-gated noVNC proxy + tunnel + Url/Password go live FIRST.
 # =============================================================================
 set -euo pipefail
 
@@ -13,9 +13,14 @@ echo ">>> Android edition: $EDITION"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$WORKDIR_PHONE"
+WORKDIR_PHONE="$(cd "$WORKDIR_PHONE" && pwd)"
+SCREEN_READY_FILE="$WORKDIR_PHONE/screen-ready"
+if [ "${PHASE:-}" = "1" ] || [ "${PHASE:-}" = "2" ]; then
+  rm -f "$SCREEN_READY_FILE"
+fi
 cd "$WORKDIR_PHONE"
 # Resolve the SDK location NOW so the viewer launched below can use adb for
-# the dashboard's APK-install action. The phone screen itself is noVNC.
+# the dashboard's APK-install action. noVNC remains the remote-control layer.
 SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
 
@@ -32,14 +37,14 @@ fi
 printf %s "$VNC_PASSWORD" > "$PW_FILE"
 export VNC_PASSWORD
 SERIAL="emulator-5554"
-NOVNC_PACKAGES=(xvfb x11vnc novnc websockify libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool)
+NOVNC_PACKAGES=(xvfb x11vnc novnc websockify scrcpy libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool)
 NOVNC_INSTALL_LOG="$WORKDIR_PHONE/novnc-install.log"
 NOVNC_INSTALL_PID="$WORKDIR_PHONE/novnc-install.pid"
 NOVNC_INSTALL_STATUS="$WORKDIR_PHONE/novnc-install.status"
 novnc_ready() {
   command -v Xvfb >/dev/null 2>&1 && command -v x11vnc >/dev/null 2>&1 \
-    && command -v websockify >/dev/null 2>&1 && [ -f /usr/share/novnc/vnc.html ] \
-    && [ -f /usr/share/novnc/vnc_lite.html ]
+    && command -v websockify >/dev/null 2>&1 && command -v scrcpy >/dev/null 2>&1 \
+    && [ -f /usr/share/novnc/vnc.html ] && [ -f /usr/share/novnc/vnc_lite.html ]
 }
 apt_get() {
   # GitHub's Ubuntu image may be running apt-daily/unattended-upgrades when a
@@ -100,7 +105,7 @@ fi
 
 # ------------------------------------------------------ live FIRST ----------
 # Password-gated noVNC proxy + tunnel + saved credentials BEFORE SDK work.
-# The page shows a noVNC starting notice until the emulator's VNC bridge is up.
+# The viewer stays on its startup page until the scrcpy display is ready.
 LIVE_ALREADY=0
 TUNNEL_URL=""
 if [ "${PHASE:-}" = "2" ] && [ -f viewer.pid ] && kill -0 "$(cat viewer.pid)" 2>/dev/null \
@@ -109,8 +114,9 @@ if [ "${PHASE:-}" = "2" ] && [ -f viewer.pid ] && kill -0 "$(cat viewer.pid)" 2>
   VIEWER_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared-viewer.log | head -n1 || true)"
 fi
 if [ "$LIVE_ALREADY" = "0" ]; then
-PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 ADB_SERIAL="$SERIAL" \
-  python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" > viewer.log 2>&1 &
+  PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 ADB_SERIAL="$SERIAL" \
+    PHONE_SCREEN_READY_FILE="$SCREEN_READY_FILE" \
+    python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" > viewer.log 2>&1 &
 echo $! > viewer.pid
 sleep 2
 : > cloudflared-viewer.log
@@ -137,6 +143,7 @@ if [ "$LIVE_ALREADY" = "0" ]; then (
     sleep 20
     if [ -f viewer.pid ] && ! kill -0 "$(cat viewer.pid)" 2>/dev/null; then
       PHONE_PASSWORD="$VNC_PASSWORD" VIEWER_PORT=8081 ADB_SERIAL="$SERIAL" \
+        PHONE_SCREEN_READY_FILE="$SCREEN_READY_FILE" \
         python3 "$REPO_ROOT/scripts/mobile-phone/viewer.py" >> viewer.log 2>&1 &
       echo $! > viewer.pid
       echo "viewer restarted" >> supervisor.log
@@ -197,9 +204,25 @@ fi
 if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
   echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
     || echo no | avdmanager create avd -n phone -k "$IMG_PKG" --force >/dev/null
-  CFG="$AVD_HOME_DIR/phone.avd/config.ini"
-  sed -i 's/^hw.ramSize=.*/hw.ramSize=8192M/; s/^disk.dataPartition.size=.*/disk.dataPartition.size=32G/; s/^hw.lcd.width=.*/hw.lcd.width=432/; s/^hw.lcd.height=.*/hw.lcd.height=768/; s/^hw.lcd.density=.*/hw.lcd.density=200/; s/^hw.cpu.ncore=.*/hw.cpu.ncore=4/' "$CFG" 2>/dev/null || true
 fi
+CFG="$AVD_HOME_DIR/phone.avd/config.ini"
+set_avd_config() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$CFG"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$CFG"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$CFG"
+  fi
+}
+# Configure the guest before the emulator reads config.ini. In particular,
+# disabling the hard keyboard makes Android's own on-screen IME appear on tap.
+set_avd_config hw.ramSize 8192M
+set_avd_config disk.dataPartition.size 32G
+set_avd_config hw.lcd.width 432
+set_avd_config hw.lcd.height 768
+set_avd_config hw.lcd.density 200
+set_avd_config hw.cpu.ncore 4
+set_avd_config hw.keyboard no
 # Both screen URLs require the official noVNC stack. Wait for phase 1's
 # installer to finish completely, even if its first package files appeared;
 # never launch a second apt-get while the first process may own dpkg's lock.
@@ -235,20 +258,21 @@ if ! novnc_ready; then
   exit 1
 fi
 USE_VNC=1
-echo ">>> Required noVNC stack: ready"
-Xvfb :99 -screen 0 500x800x24 -nolisten tcp > xvfb.log 2>&1 &
+echo ">>> Required noVNC + scrcpy stack: ready"
+Xvfb :99 -screen 0 432x768x24 -nolisten tcp > xvfb.log 2>&1 &
 echo $! > xvfb.pid
-export DISPLAY=:99 QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
+export DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy QT_XCB_GL_INTEGRATION=none QT_QPA_PLATFORM=xcb
 sleep 2
 if ! kill -0 "$(cat xvfb.pid)" 2>/dev/null; then
   echo "Xvfb failed to start; noVNC cannot display the phone." >&2
   tail -n 40 xvfb.log 2>/dev/null || true
   exit 1
 fi
-WIN_ARGS=(-no-nested-warning)
 ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
 launch_emu() {
-  nohup "$SDK/emulator/emulator" -avd phone "${WIN_ARGS[@]}" -no-audio -no-boot-anim \
+  # Run the emulator headlessly so its host warning dialogs and control panel
+  # cannot leak into the phone screen. scrcpy below displays the guest only.
+  nohup "$SDK/emulator/emulator" -avd phone -no-window -no-audio -no-boot-anim \
     -gpu swiftshader_indirect -accel "$1" -memory 4096 -cores 4 -partition-size 32768 \
     -port 5554 -no-snapshot -wipe-data -netdelay none -netspeed full -camera-back none -camera-front none -no-metrics \
     > emulator.log 2>&1 &
@@ -256,38 +280,21 @@ launch_emu() {
 }
 emu_alive() { [ -f emulator.pid ] && kill -0 "$(cat emulator.pid)" 2>/dev/null; }
 launch_emu "$ACCEL"; sleep 12
-if ! emu_alive; then
-  WIN_ARGS=(); launch_emu "$ACCEL"; sleep 12  # retry without the optional flag, still windowed
-fi
 if ! emu_alive && [ "$ACCEL" = "on" ]; then
-  ACCEL="off"; WIN_ARGS=(-no-nested-warning); launch_emu off; sleep 12
+  ACCEL="off"; launch_emu off; sleep 12
 fi
 if ! emu_alive; then
-  echo "Windowed Android Emulator failed; refusing to fall back to a headless/non-noVNC screen." >&2
+  echo "Headless Android Emulator failed; refusing to start a phone without a screen mirror." >&2
   tail -n 60 emulator.log 2>/dev/null || true
   exit 1
 fi
 echo "$(date -u +%H:%M:%S) vnc_stack=$USE_VNC emulator_alive=yes" >> supervisor.log 2>/dev/null || true
-(
-  for _ in $(seq 1 60); do
-    # Pin the emulator window to the top-left so VNC serves the phone area.
-    xdotool search --name "mulator" windowmove 0 0 >/dev/null 2>&1 || true
-    # Dismiss a nested-virtualization warning if the runner shows one.
-    if xdotool search --name "arning" >/dev/null 2>&1; then
-      xdotool search --name "arning" windowfocus key Return >/dev/null 2>&1 || true
-      xdotool search --name "arning" key Return >/dev/null 2>&1 || true
-      sleep 1
-      xdotool search --name "arning" >/dev/null 2>&1 || break
-    fi
-    sleep 3
-  done
-) >/dev/null 2>&1 &
 
-# Bring up both real noVNC endpoints as soon as the windowed emulator exists,
-# before ADB provisioning can take several minutes.
+# Bring up noVNC while Android provisions. It captures the fixed portrait
+# Xvfb surface; the emulator UI is headless and only scrcpy is shown there.
 : > vnc.log
 x11vnc -display :99 -forever -shared -noxdamage -threads -defer 10 -wait 10 -nowf -nowcr \
-  -clip 432x768+0+0 -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
+  -xkb -repeat -rfbport 5900 -passwd "$VNC_PASSWORD" > vnc.log 2>&1 &
 echo $! > vnc.pid
 : > websockify.log
 websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 > websockify.log 2>&1 &
@@ -322,13 +329,19 @@ elif [ -z "$NOVNC_URL" ]; then
 fi
 
 adb start-server >/dev/null 2>&1 || true
-# soft keyboard must actually open when a text field is tapped
-sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 2>/dev/null || true
 (
+  BOOTED=0
   for _ in $(seq 1 120); do
-    BOOTED="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-    [ "$BOOTED" = "1" ] && break; sleep 5
+    if [ "$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" = "1" ]; then
+      BOOTED=1
+      break
+    fi
+    sleep 5
   done
+  if [ "$BOOTED" != "1" ]; then
+    echo "Android did not finish booting; scrcpy cannot start the noVNC display."
+    exit 1
+  fi
   S="adb -s $SERIAL shell"
   $S settings put global device_provisioned 1 >/dev/null 2>&1 || true
   $S settings put secure user_setup_complete 1 >/dev/null 2>&1 || true
@@ -353,10 +366,50 @@ sed -i 's/^hw.keyboard=.*/hw.keyboard=no/' "$AVD_HOME_DIR/phone.avd/config.ini" 
   $S settings put secure show_ime_with_hard_keyboard 1 >/dev/null 2>&1 || true
   $S wm dismiss-keyguard >/dev/null 2>&1 || true
   $S input keyevent 3 >/dev/null 2>&1 || true
+
+  # Mirror only the Android display. This removes the Emulator host toolbar and
+  # modal warnings. Keep scrcpy control and clipboard autosync enabled so VNC
+  # keyboard/mouse events and the noVNC clipboard reach Android.
+  SCRCPY_LOG="$WORKDIR_PHONE/scrcpy.log"
+  : > "$SCRCPY_LOG"
+  SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy nohup scrcpy --fullscreen --prefer-text \
+    --window-borderless --window-title NishCloudPhone --max-size 768 \
+    > "$SCRCPY_LOG" 2>&1 &
+  SCRCPY_PID=$!
+  printf '%s\n' "$SCRCPY_PID" > "$WORKDIR_PHONE/scrcpy.pid"
+  SCREEN_READY=0
+  for _ in $(seq 1 60); do
+    SCRCPY_WINDOW="$(xdotool search --onlyvisible --name 'NishCloudPhone' 2>/dev/null | head -n1 || true)"
+    if [ -n "$SCRCPY_WINDOW" ]; then
+      xdotool windowraise "$SCRCPY_WINDOW" >/dev/null 2>&1 || true
+      xdotool windowfocus --sync "$SCRCPY_WINDOW" >/dev/null 2>&1 || true
+      touch "$SCREEN_READY_FILE"
+      SCREEN_READY=1
+      break
+    fi
+    if ! kill -0 "$SCRCPY_PID" 2>/dev/null; then break; fi
+    sleep 1
+  done
+  if [ "$SCREEN_READY" != "1" ]; then
+    echo "scrcpy did not create its display window; leaving the screen in starting state."
+    tail -n 40 "$SCRCPY_LOG" 2>/dev/null || true
+    exit 1
+  fi
+
   for _ in 1 2 3 4 5 6; do sleep 30; $S input keyevent 224 >/dev/null 2>&1 || true; $S svc wifi enable >/dev/null 2>&1 || true; done
 ) > setup-skip.log 2>&1 &
 
-if [ "${START_ONLY:-0}" = "1" ]; then exit 0; fi
+if [ "${START_ONLY:-0}" = "1" ]; then
+  for _ in $(seq 1 180); do
+    [ -f "$SCREEN_READY_FILE" ] && exit 0
+    if ! emu_alive; then break; fi
+    sleep 1
+  done
+  echo "Phone screen mirror did not become ready; refusing to report a live phone." >&2
+  tail -n 40 setup-skip.log 2>/dev/null || true
+  tail -n 40 "$WORKDIR_PHONE/scrcpy.log" 2>/dev/null || true
+  exit 1
+fi
 DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
   kill -0 "$(cat emulator.pid)" 2>/dev/null || { echo "phone stopped"; exit 1; }
