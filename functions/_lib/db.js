@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { hashPassword } from "./passwords.js";
+import { safeDatabaseErrorDetails } from "./db-diagnostics.js";
 
 const root = globalThis;
 const pools = root.__ncpPagesPools || (root.__ncpPagesPools = new Map());
@@ -30,7 +31,9 @@ function pool(env) {
     options: "-c idle_session_timeout=30s",
     application_name: "nishcloudphone-pages", allowExitOnIdle: true,
   });
-  p.on("error", () => {});
+  p.on("error", error => {
+    console.error("[nishcloudphone db]", "idle pool client error", safeDatabaseErrorDetails(error));
+  });
   pools.set(cs, p);
   return p;
 }
@@ -54,6 +57,7 @@ export async function retryConnectionOnce(operation, onRetry) {
   try { return await operation(); }
   catch (error) {
     if (!isConnectionError(error)) throw error;
+    console.warn("[nishcloudphone db]", "retrying idempotent operation after connection failure", safeDatabaseErrorDetails(error));
     await onRetry?.(error);
     await new Promise(resolve => setTimeout(resolve, 250));
     return operation();
@@ -72,6 +76,7 @@ async function query(env, sql, params = []) {
     catch (error) {
       last = error;
       if (!isConnectionError(error)) throw error;
+      console.warn("[nishcloudphone db]", "query connection failed; resetting pool", safeDatabaseErrorDetails(error));
       await resetPool(env);
       if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
     }
@@ -101,9 +106,12 @@ const DDL = [
 ];
 
 export async function dbHealth(env) {
-  if (!dbConfigured(env)) return { ok: false, code: "no-env" };
-  try { await query(env, "SELECT 1"); return { ok: true, code: null }; }
-  catch (e) { return { ok: false, code: String(e.code || "db-error").slice(0, 40) }; }
+  if (!dbConfigured(env)) return { ok: false, code: "no-env", codeKind: "configuration" };
+  try { await query(env, "SELECT 1"); return { ok: true, code: null, codeKind: null }; }
+  catch (error) {
+    const details = safeDatabaseErrorDetails(error);
+    return { ok: false, code: details.code, codeKind: details.codeKind, classification: details.classification };
+  }
 }
 
 async function initializeSchema(env) {
