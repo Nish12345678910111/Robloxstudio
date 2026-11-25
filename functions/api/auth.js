@@ -1,5 +1,5 @@
 import { makeSession, sessionSecretConfigured } from "../_lib/auth.js";
-import { createUser, dbConfigured, ensureSchema, findUser, saveLastIp, touchLogin } from "../_lib/db.js";
+import { createUser, dbConfigured, ensureSchema, findUser, safeDatabaseTarget, saveLastIp, touchLogin } from "../_lib/db.js";
 import { verifyPassword } from "../_lib/passwords.js";
 import { appendSessionCookie, clientIp, json, sameOrigin } from "../_lib/http.js";
 import { VPN_MSG, vpnBlocked } from "../_lib/netguard.js";
@@ -19,10 +19,14 @@ export function safeAuthErrorDetails(error) {
   return safeDatabaseErrorDetails(error);
 }
 
-function logAuthFailure(stage, error) {
+function logAuthFailure(stage, error, env) {
   // Log the real driver/SQLSTATE code when present, and a clearly marked
   // classification when the runtime only exposes a generic socket error.
-  console.error("[nishcloudphone auth]", stage, safeAuthErrorDetails(error));
+  // Host and port are sufficient to check routing without logging credentials.
+  console.error("[nishcloudphone auth]", stage, {
+    ...safeAuthErrorDetails(error),
+    ...safeDatabaseTarget(env),
+  });
 }
 
 async function sessionResponse(user, env) {
@@ -41,7 +45,7 @@ export async function onRequestPost({ request, env }) {
   if (await vpnBlocked(ip)) return json({ error: VPN_MSG, vpn: true }, 403);
   if (mode === "register" && throttled(`register|${ip}`, 3)) return json({ error: "Too many sign-up attempts. Wait a minute and try again." }, 429);
   try { await ensureSchema(env); } catch (error) {
-    logAuthFailure("schema initialization failed", error);
+    logAuthFailure("schema initialization failed", error, env);
     return json({ error: AUTH_BUSY }, 503);
   }
   try {
@@ -67,7 +71,7 @@ export async function onRequestPost({ request, env }) {
     await Promise.all([touchLogin(user.id, env), saveLastIp(user.id, ip, env)]).catch(() => {});
     return sessionResponse(user, env);
   } catch (error) {
-    logAuthFailure("login or session creation failed", error);
+    logAuthFailure("login or session creation failed", error, env);
     return json({ error: AUTH_BUSY }, 503);
   }
 }
