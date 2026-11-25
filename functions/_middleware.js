@@ -35,8 +35,13 @@ function isProductionApiRequest(request, env) {
   return pathname === "/api" || pathname.startsWith("/api/");
 }
 
-async function proxyApiRequest(request) {
+async function proxyApiRequest(request, env) {
   if (!sameOrigin(request)) return json({ error: "Request blocked." }, 403);
+
+  const connectionKey = String(env?.DATABASE_CONNECTION_KEY || "");
+  if (!connectionKey) {
+    return json({ error: "Service temporarily unavailable. Please try again shortly." }, 503);
+  }
 
   const sourceUrl = new URL(request.url);
   const upstreamUrl = new URL(`${sourceUrl.pathname}${sourceUrl.search}`, VERCEL_API_ORIGIN);
@@ -45,6 +50,11 @@ async function proxyApiRequest(request) {
   headers.delete("content-length");
   headers.delete("connection");
   headers.delete("transfer-encoding");
+
+  // This server-to-server key is never sent to the browser or placed in a URL.
+  // Vercel verifies it before dispatching any request marked as a Pages proxy.
+  headers.set("x-ncp-api-proxy", "cloudflare-pages");
+  headers.set("x-database-connection-key", connectionKey);
 
   // The Vercel API applies the same-origin check itself. Rewrite Origin to the
   // trusted upstream host after validating the browser's original request.
@@ -60,7 +70,7 @@ export async function onRequest({ request, next, env }) {
   let response;
   if (isProductionApiRequest(request, env || {})) {
     try {
-      response = await proxyApiRequest(request);
+      response = await proxyApiRequest(request, env);
     } catch (error) {
       // Do not include request bodies, cookies, or database credentials in logs.
       console.error("[ncp api proxy] Vercel API request failed", {

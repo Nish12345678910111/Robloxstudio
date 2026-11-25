@@ -19,7 +19,10 @@ Just create an account, tap **＋ New Cloud Phone**, and your phone appears on s
    - Build output directory: `cloudflare-pages-dist`
    - Build environment variable: `NODE_VERSION=22.12.0` (the repo also has `.nvmrc`)
 3. Keep the root `wrangler.jsonc` configuration file. It sets the Pages output directory and `nodejs_compat`; the `functions/` directory is detected automatically. Leave Placement off unless you have a separate reason to change it. **Do not add a Hyperdrive or D1 binding.** On the production `main` branch, Pages serves the UI and proxies `/api/*` requests over HTTPS to the production Vercel API, which connects to Aiven. This avoids the failing Cloudflare PostgreSQL TCP socket path. The HilltopAds loader remains only in the Cloudflare UI; Vercel serves API requests, not the Cloudflare pages or ad loader.
+
+   Set `DATABASE_CONNECTION_KEY` as an encrypted **Production secret** in Cloudflare Pages and as a **sensitive Production environment variable** in Vercel. Use the exact same high-entropy value in both. Generate one locally with `openssl rand -hex 32`; do not commit it, expose it to browser code, place it in a URL/body, or paste it into chat. The Pages middleware sends it only in a server-to-server HTTPS header, and Vercel compares it before dispatching proxied API calls. If either value is missing or mismatched, the proxy fails closed.
 4. Configure Vercel with Production secrets in **Settings → Variables and Secrets**:
+   - `DATABASE_CONNECTION_KEY` — the same random value configured as the Cloudflare Pages Production secret; store it as sensitive.
    - `AIVEN_DATABASE_URL` — the Aiven PostgreSQL connection URI, e.g. `postgres://USER:PASSWORD@HOST:PORT/defaultdb?sslmode=require`.
    - `SESSION_SECRET` — a long random secret (for example, generate one with `openssl rand -hex 32`).
    - `ADMIN_PASSWORD` — the password used to seed the `admin` account on first startup.
