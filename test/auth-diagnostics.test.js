@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { safeAuthErrorDetails } from "../functions/api/auth.js";
+import { safeDatabaseTarget } from "../functions/_lib/db.js";
 
 test("auth diagnostics preserve useful error details while redacting secrets", () => {
   const error = Object.assign(
@@ -36,6 +37,23 @@ test("database diagnostics classify a generic pg connection close without invent
   assert.equal(details.codeKind, "classification");
   assert.equal(details.driverCode, "not-provided");
   assert.equal(details.classification, "PG_CONNECTION_TERMINATED");
+});
+
+test("database target diagnostics expose only the host and port", () => {
+  const target = safeDatabaseTarget({
+    AIVEN_DATABASE_URL: "postgres://avnadmin:secret-password@db.example.aivencloud.com:6432/private-db?sslmode=require&token=secret-token",
+  });
+  assert.deepEqual(target, { databaseHost: "db.example.aivencloud.com", databasePort: "6432" });
+  assert.doesNotMatch(JSON.stringify(target), /secret-password|private-db|secret-token|avnadmin/);
+});
+
+test("database target diagnostics show the PostgreSQL default port and sanitize malformed URLs", () => {
+  assert.deepEqual(safeDatabaseTarget({ DATABASE_URL: "postgresql://user:secret@db.example/app" }), {
+    databaseHost: "db.example", databasePort: "5432",
+  });
+  assert.deepEqual(safeDatabaseTarget({ AIVEN_DATABASE_URL: "not-a-valid-database-url?password=secret" }), {
+    databaseHost: "unparseable", databasePort: "unparseable",
+  });
 });
 
 test("database diagnostics identify Cloudflare TCP proxy connect failures", () => {

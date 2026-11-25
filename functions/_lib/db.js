@@ -8,6 +8,18 @@ const schemaRuns = root.__ncpPagesSchemaRuns || (root.__ncpPagesSchemaRuns = new
 const dbUrl = env => String(env.AIVEN_DATABASE_URL || env.DATABASE_URL || "");
 export const dbConfigured = env => Boolean(dbUrl(env));
 
+// Include only the routable endpoint in server-side diagnostics. Never log the
+// username, password, database name, query parameters, or full connection URL.
+export function safeDatabaseTarget(env) {
+  try {
+    const url = new URL(dbUrl(env));
+    if (!["postgres:", "postgresql:"].includes(url.protocol)) throw new Error("unsupported database URL");
+    return { databaseHost: url.hostname || "not-provided", databasePort: url.port || "5432" };
+  } catch {
+    return { databaseHost: "unparseable", databasePort: "unparseable" };
+  }
+}
+
 function pool(env) {
   const cs = dbUrl(env);
   if (!cs) throw new Error("Database is not configured");
