@@ -8,12 +8,21 @@ import { onRequestGet as phoneGet } from "../../../functions/api/phones/[id].js"
 import { onRequestPost as phoneStop } from "../../../functions/api/phones/[runId]/stop.js";
 import { onRequestDelete as phoneDelete } from "../../../functions/api/phones/[runId]/delete.js";
 import { json } from "../../../functions/_lib/http.js";
+import { hasValidDatabaseConnectionKey } from "../../../functions/_lib/connection-key.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const env = process.env;
 async function dispatch(request, context, method) {
+  const proxyMarker = request.headers.get("x-ncp-api-proxy");
+  if (proxyMarker !== null && (
+    proxyMarker !== "cloudflare-pages" ||
+    !hasValidDatabaseConnectionKey(request.headers.get("x-database-connection-key"), env.DATABASE_CONNECTION_KEY)
+  )) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
   const route = await context?.params || {};
   const parts = Array.isArray(route.path) ? route.path : [];
   if (parts.length === 1 && parts[0] === "auth" && method === "POST") {
