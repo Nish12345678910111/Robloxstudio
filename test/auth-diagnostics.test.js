@@ -38,6 +38,13 @@ test("database diagnostics classify a generic pg connection close without invent
   assert.equal(details.classification, "PG_CONNECTION_TERMINATED");
 });
 
+test("database diagnostics identify Cloudflare TCP proxy connect failures", () => {
+  const details = safeAuthErrorDetails(new Error("proxy request failed, cannot connect to the specified address"));
+  assert.equal(details.code, "PG_TCP_PROXY_CONNECT_FAILED");
+  assert.equal(details.codeKind, "classification");
+  assert.equal(details.driverCode, "not-provided");
+});
+
 test("database diagnostics preserve PostgreSQL SQLSTATE codes", () => {
   const details = safeAuthErrorDetails(Object.assign(new Error("terminating connection due to administrator command"), { code: "57P01" }));
   assert.equal(details.code, "57P01");

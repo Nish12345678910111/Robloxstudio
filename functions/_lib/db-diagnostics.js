@@ -45,6 +45,7 @@ function classify(code, message) {
   if (["ETIMEDOUT", "ETIME"].includes(c) || /timed? ?out|timeout/.test(m)) return "PG_CONNECTION_TIMEOUT";
   if (c === "ECONNREFUSED") return "PG_CONNECTION_REFUSED";
   if (c === "ENOTFOUND" || c === "EAI_AGAIN") return "PG_DNS_FAILURE";
+  if (/proxy request failed|cannot connect to the specified address/.test(m)) return "PG_TCP_PROXY_CONNECT_FAILED";
   if (/connection terminated unexpectedly|server closed the connection/.test(m)) return "PG_CONNECTION_TERMINATED";
   if (/out of memory|oom|memory limit/.test(m)) return "PG_OUT_OF_MEMORY";
   if (/password authentication failed|authentication failed/.test(m)) return "PG_AUTHENTICATION_FAILED";

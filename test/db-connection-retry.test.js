@@ -16,6 +16,20 @@ test("idempotent schema work retries once after an unexpected connection close",
   assert.equal(resets, 1);
 });
 
+test("schema setup retries a Cloudflare TCP proxy address failure once", async () => {
+  let attempts = 0;
+  let resets = 0;
+  const result = await retryConnectionOnce(async () => {
+    attempts++;
+    if (attempts === 1) throw new Error("proxy request failed, cannot connect to the specified address");
+    return "ready";
+  }, async () => { resets++; });
+
+  assert.equal(result, "ready");
+  assert.equal(attempts, 2);
+  assert.equal(resets, 1);
+});
+
 test("schema retry does not replay non-connection errors", async () => {
   let attempts = 0;
   let resets = 0;

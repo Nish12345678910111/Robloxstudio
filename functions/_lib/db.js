@@ -43,7 +43,11 @@ function isConnectionError(error) {
   if (!error) return false;
   if (CONNECTION_ERRORS.has(error.code)) return true;
   const message = String(error.message || "").toLowerCase();
-  return ["connection terminated", "connection timeout", "server closed the connection", "too many clients", "socket hang up", "econnreset"].some(part => message.includes(part));
+  return [
+    "connection terminated", "connection timeout", "server closed the connection",
+    "too many clients", "socket hang up", "econnreset", "proxy request failed",
+    "cannot connect to the specified address",
+  ].some(part => message.includes(part));
 }
 async function resetPool(env) {
   const cs = dbUrl(env), old = pools.get(cs);
