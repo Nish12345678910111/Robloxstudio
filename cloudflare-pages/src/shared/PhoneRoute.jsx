@@ -60,7 +60,7 @@ export default function PhoneRoute({ phoneId }) {
     : screen;
 
   return <main className="wrap">
-    <header className="top"><div><h1>📱 Cloud Phone</h1><p className="muted">{phone.phone_id} · {phone.edition === "android15" ? "Android 15 compatibility test" : "Android 11"} · {phone.status}</p></div><a className="btnLink" href="/">← My cloud phones</a></header>
+    <header className="top"><div><h1>📱 Cloud Phone</h1><p className="muted">{phone.phone_id} · {phone.edition === "android15-arm64" ? "Android 15 ARM64 guest pilot" : phone.edition === "android15" ? "Android 15 x86_64 test" : "Android 11"} · {phone.status}</p></div><a className="btnLink" href="/">← My cloud phones</a></header>
     <div className="credBox"><p><b>Url -</b> {screen ? <a href={screen} target="_blank" rel="noreferrer">{screen}</a> : "starting…"}</p>
       <p><b>Password -</b> {phone.phone_password ? <code>{phone.phone_password}</code> : "•••••••• (appears when ready)"}</p></div>
     {fallback && <p className="footLinks" style={{ maxWidth: 430, margin: "0 auto 10px" }}><a href={fallback} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a></p>}

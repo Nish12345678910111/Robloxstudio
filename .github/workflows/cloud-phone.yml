@@ -20,11 +20,11 @@ on:
         default: "manual"
         type: string
       edition:
-        description: "Android edition (Android 15 is an experimental compatibility profile)"
+        description: "Android edition (ARM64 guest uses slow software emulation on x86_64)"
         required: true
         default: "android11"
         type: choice
-        options: ["android11", "android15"]
+        options: ["android11", "android15", "android15-arm64"]
       session_minutes:
         description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
@@ -105,6 +105,7 @@ jobs:
         env:
           PHONE_ID: ${{ inputs.phone_id }}
           PHASE: "1"
+          EDITION: ${{ inputs.edition }}
           AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
         run: |
           chmod +x scripts/mobile-phone/start.sh

@@ -25,16 +25,22 @@ test("the selected cloud-phone RAM, CPU and disk values reach the emulator", () 
   assert.doesNotMatch(startScript, /-memory 4096 -cores 4/);
 });
 
-test("Android 15 is an opt-in compatibility profile while Android 11 stays the default", () => {
-  assert.match(workflowScript, /default: "android11"[\s\S]*options: \["android11", "android15"\]/);
-  assert.match(startScript, /android11\) ANDROID_API_LEVEL=30/);
-  assert.match(startScript, /android15\) ANDROID_API_LEVEL=35/);
-  assert.match(startScript, /IMG_PKG="system-images;android-\$\{ANDROID_API_LEVEL\};google_apis;x86_64"/);
+test("Android 15 profiles are opt-in and Android 11 stays the default", () => {
+  assert.match(workflowScript, /default: "android11"[\s\S]*options: \["android11", "android15", "android15-arm64"\]/);
+  assert.match(startScript, /android11\) ANDROID_API_LEVEL=30; ANDROID_VERSION=11; ANDROID_ABI=x86_64/);
+  assert.match(startScript, /android15\) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=x86_64/);
+  assert.match(startScript, /android15-arm64\) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=arm64-v8a/);
+  assert.match(startScript, /PHONE_SYSTEM_IMAGE="system-images;android-\$\{ANDROID_API_LEVEL\};google_apis;\$\{ANDROID_ABI\}"/);
+  assert.match(startScript, /IMG_PKG="\$PHONE_SYSTEM_IMAGE"/);
+  assert.ok(startScript.includes('if [ "$ANDROID_ABI" = "x86_64" ] && [ -w /dev/kvm ]; then ACCEL="on"; fi'));
+  assert.match(startScript, /SCREEN_START_TIMEOUT=960/);
+  assert.match(startScript, /BOOT_WAIT_ATTEMPTS=180/);
   assert.match(workflowScript, /cloud-phone-emulator-v6-\$\{\{ inputs\.edition \}\}/);
-  assert.match(phonesApiScript, /const edition = requestBody\?\.edition \?\? "android11"/);
+  assert.match(workflowScript, /PHASE: "1"\s+EDITION: \$\{\{ inputs\.edition \}\}/);
+  assert.match(phonesApiScript, /PHONE_EDITIONS = new Set\(\["android11", "android15", "android15-arm64"\]\)/);
   assert.match(phonesApiScript, /dispatchPhone\(phoneId, env, edition\)/);
-  assert.match(githubScript, /edition: selectedEdition/);
-  assert.match(dashboardScript, /Android 15 \(compatibility test\)/);
+  assert.match(githubScript, /"android15-arm64" \? edition/);
+  assert.match(dashboardScript, /Android 15 ARM64 guest \(slow software emulation\)/);
 });
 
 test("soft keyboard is configured before emulator launch and VNC accepts mapped keys", () => {
@@ -60,6 +66,10 @@ test("crash-log download is authenticated and reads the Android crash buffer", (
   assert.ok(authCheck > getHandler, "crash-log requests should pass authentication first");
   assert.ok(crashRoute > authCheck, "crash-log route should be inside the authenticated GET handler");
   assert.match(viewerScript, /"logcat", "-b", "crash", "-d", "-t", "250"/);
+  assert.match(viewerScript, /Cloud Phone runtime context/);
+  assert.match(viewerScript, /ro\.product\.cpu\.abi/);
+  assert.match(viewerScript, /ro\.dalvik\.vm\.native\.bridge/);
+  assert.match(viewerScript, /Android crash buffer \(logcat -b crash\)/);
   assert.match(dashboardScript, /Download the latest Android crash trace/);
   assert.match(dashboardScript, /\/crash-log/);
 });
