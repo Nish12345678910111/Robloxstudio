@@ -205,12 +205,21 @@ export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_D
 export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
 IMG_PKG="$PHONE_SYSTEM_IMAGE"
 IMG_DIR="$SDK/system-images/android-${ANDROID_API_LEVEL}/google_apis/${ANDROID_ABI}"
+SDKMANAGER_LOG="$WORKDIR_PHONE/sdkmanager.log"
+: > "$SDKMANAGER_LOG"
 # Licenses + installs ONLY when something is actually missing (cache hits
-# skip all of this - no more sdkmanager noise/time on the fast path).
+# skip all of this - no more sdkmanager noise/time on the fast path). Keep the
+# detail in the workspace so a failed ARM64-image fetch can be diagnosed.
 if [ ! -x "$SDK/emulator/emulator" ] || [ ! -s "$IMG_DIR/system.img" ]; then
-  yes | sdkmanager --licenses >/dev/null 2>&1 || true
-  [ -x "$SDK/emulator/emulator" ] || sdkmanager "emulator" "platform-tools" >/dev/null
-  [ -s "$IMG_DIR/system.img" ] || sdkmanager "$IMG_PKG" >/dev/null
+  yes | sdkmanager --licenses >>"$SDKMANAGER_LOG" 2>&1 || true
+  if [ ! -x "$SDK/emulator/emulator" ]; then
+    sdkmanager "emulator" "platform-tools" >>"$SDKMANAGER_LOG" 2>&1 \
+      || { tail -n 100 "$SDKMANAGER_LOG" >&2; exit 1; }
+  fi
+  if [ ! -s "$IMG_DIR/system.img" ]; then
+    sdkmanager "$IMG_PKG" >>"$SDKMANAGER_LOG" 2>&1 \
+      || { tail -n 100 "$SDKMANAGER_LOG" >&2; exit 1; }
+  fi
 fi
 # Let the workflow cache a complete emulator install even if a later
 # noVNC/emulator startup check fails. Never save a partial SDK download.

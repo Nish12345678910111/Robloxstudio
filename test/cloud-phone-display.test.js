@@ -35,6 +35,8 @@ test("Android 15 profiles are opt-in and Android 11 stays the default", () => {
   assert.ok(startScript.includes('if [ "$ANDROID_ABI" = "x86_64" ] && [ -w /dev/kvm ]; then ACCEL="on"; fi'));
   assert.match(startScript, /SCREEN_START_TIMEOUT=960/);
   assert.match(startScript, /BOOT_WAIT_ATTEMPTS=180/);
+  assert.match(startScript, /SDKMANAGER_LOG="\$WORKDIR_PHONE\/sdkmanager\.log"/);
+  assert.match(workflowScript, /Report safe Android startup diagnostics/);
   assert.match(workflowScript, /cloud-phone-emulator-v6-\$\{\{ inputs\.edition \}\}/);
   assert.match(workflowScript, /PHASE: "1"\s+EDITION: \$\{\{ inputs\.edition \}\}/);
   assert.match(phonesApiScript, /PHONE_EDITIONS = new Set\(\["android11", "android15", "android15-arm64"\]\)/);
