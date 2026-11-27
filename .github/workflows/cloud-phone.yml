@@ -20,11 +20,11 @@ on:
         default: "manual"
         type: string
       edition:
-        description: "Android edition"
+        description: "Android edition (Android 15 is an experimental compatibility profile)"
         required: true
         default: "android11"
         type: choice
-        options: ["android11"]
+        options: ["android11", "android15"]
       session_minutes:
         description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
@@ -116,7 +116,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-          key: cloud-phone-emulator-v5-android11
+          key: cloud-phone-emulator-v6-${{ inputs.edition }}
 
       - name: Start Cloud Phone
         id: start_phone
@@ -142,7 +142,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-          key: cloud-phone-emulator-v5-android11
+          key: cloud-phone-emulator-v6-${{ inputs.edition }}
 
       - name: Keep phone alive (until session ends or run is cancelled)
         env:

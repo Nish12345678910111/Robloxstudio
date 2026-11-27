@@ -16,6 +16,8 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
 .avatar{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;flex:0 0 auto}
 .userChip div{display:flex;flex-direction:column;min-width:0}.userChip span{font-size:12px;color:var(--mut)}
 .side nav{display:flex;flex-direction:column;gap:8px}
+.editionPicker{display:flex;flex-direction:column;gap:7px;color:var(--mut);font-size:12px}
+.editionPicker select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#0a1122;color:var(--txt);font:inherit}
 .nav{text-align:left;background:transparent;border:1px solid transparent;border-radius:14px;padding:12px 14px}
 .nav.on{background:linear-gradient(135deg,rgba(79,124,255,.25),rgba(139,92,246,.18));border-color:#35549f}
 .primary{background:linear-gradient(135deg,var(--acc),var(--acc2));border:0;font-weight:800;color:#fff;box-shadow:0 8px 26px rgba(90,110,255,.35)}

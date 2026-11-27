@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  NishCloudPhone - Android 11 in the official Android Emulator (headless).
+#  NishCloudPhone - Android 11/15 in the official Android Emulator (headless).
 #  scrcpy renders only the Android display into Xvfb; official noVNC serves
 #  that clean screen and forwards keyboard/clipboard input to the phone.
 #  The password-gated noVNC proxy + tunnel + Url/Password go live FIRST.
@@ -14,8 +14,13 @@ DISK_GB="${DISK_GB:-32}"
 case "$RAM_MB" in 4096|8192|12288) ;; *) echo "Unsupported RAM_MB: $RAM_MB" >&2; exit 2 ;; esac
 case "$CPU_CORES" in 2|4) ;; *) echo "Unsupported CPU_CORES: $CPU_CORES" >&2; exit 2 ;; esac
 case "$DISK_GB" in 16|32) ;; *) echo "Unsupported DISK_GB: $DISK_GB" >&2; exit 2 ;; esac
-EDITION="android11"
-echo ">>> Android edition: $EDITION"
+EDITION="${EDITION:-android11}"
+case "$EDITION" in
+  android11) ANDROID_API_LEVEL=30; ANDROID_VERSION=11 ;;
+  android15) ANDROID_API_LEVEL=35; ANDROID_VERSION=15 ;;
+  *) echo "Unsupported Android edition: $EDITION" >&2; exit 2 ;;
+esac
+echo ">>> Android $ANDROID_VERSION compatibility profile: $EDITION"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$WORKDIR_PHONE"
@@ -176,7 +181,7 @@ echo "Cloud phone created."
 if [ "${PHASE:-}" = "1" ]; then echo "Screen service live."; exit 0; fi
 
 # ------------------------------------------------------ emulator setup ------
-echo ">>> Starting Android 11 phone..."
+echo ">>> Starting Android $ANDROID_VERSION phone..."
 # Fast path: CI runners ship Java + Android SDK preinstalled - use them and
 # skip every big download. Only fall back to a private SDK when missing.
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
@@ -193,17 +198,18 @@ fi
 AVD_HOME_DIR="$WORKDIR_PHONE/avd"; mkdir -p "$AVD_HOME_DIR"
 export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
 export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
-IMG_PKG="system-images;android-30;google_apis;x86_64"
+IMG_PKG="system-images;android-${ANDROID_API_LEVEL};google_apis;x86_64"
+IMG_DIR="$SDK/system-images/android-${ANDROID_API_LEVEL}/google_apis/x86_64"
 # Licenses + installs ONLY when something is actually missing (cache hits
 # skip all of this - no more sdkmanager noise/time on the fast path).
-if [ ! -x "$SDK/emulator/emulator" ] || [ ! -s "$SDK/system-images/android-30/google_apis/x86_64/system.img" ]; then
+if [ ! -x "$SDK/emulator/emulator" ] || [ ! -s "$IMG_DIR/system.img" ]; then
   yes | sdkmanager --licenses >/dev/null 2>&1 || true
   [ -x "$SDK/emulator/emulator" ] || sdkmanager "emulator" "platform-tools" >/dev/null
-  [ -s "$SDK/system-images/android-30/google_apis/x86_64/system.img" ] || sdkmanager "$IMG_PKG" >/dev/null
+  [ -s "$IMG_DIR/system.img" ] || sdkmanager "$IMG_PKG" >/dev/null
 fi
 # Let the workflow cache a complete emulator install even if a later
 # noVNC/emulator startup check fails. Never save a partial SDK download.
-if [ -x "$SDK/emulator/emulator" ] && [ -s "$SDK/system-images/android-30/google_apis/x86_64/system.img" ] \
+if [ -x "$SDK/emulator/emulator" ] && [ -s "$IMG_DIR/system.img" ] \
    && [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "sdk_cache_ready=true" >> "$GITHUB_OUTPUT"
 fi
