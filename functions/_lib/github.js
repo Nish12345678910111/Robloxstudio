@@ -83,9 +83,10 @@ async function ghOk(path, options, env) {
   throw new Error("upstream busy");
 }
 
-export async function dispatchPhone(phoneId, env) {
+export async function dispatchPhone(phoneId, env, edition = "android11") {
+  const selectedEdition = edition === "android15" ? "android15" : "android11";
   const body = JSON.stringify({ ref: "main", inputs: {
-    phone_id: phoneId, edition: "android11", session_minutes: "340",
+    phone_id: phoneId, edition: selectedEdition, session_minutes: "340",
     ram_mb: "12288", cpu_cores: "4", disk_gb: "32",
   } });
   const tokens = apiTokens(env);
@@ -135,7 +136,8 @@ export async function listPhones(fresh, env) {
     const item = {
       runId: run.id, name: title, status: run.status, conclusion: run.conclusion,
       createdAt: run.created_at, updatedAt: run.updated_at,
-      phoneId, edition: "android11", viewerUrl: null, tunnelUrl: null, password: null,
+      phoneId, edition: run.inputs?.edition === "android15" ? "android15" : "android11",
+      viewerUrl: null, tunnelUrl: null, password: null,
     };
     const key = phoneId === "…" ? `unknown:${run.id}` : phoneId;
     const old = byPhoneId.get(key);

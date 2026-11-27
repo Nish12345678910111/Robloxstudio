@@ -112,15 +112,21 @@ export async function onRequestPost({ request, env }) {
   if (!dbConfigured(env)) return json({ error: "Service setup is in progress. Please try again shortly." }, 503);
   if (!tokenConfigured(env)) return json({ error: BUSY }, 503);
 
+  const requestBody = await request.json().catch(() => ({}));
+  const edition = requestBody?.edition ?? "android11";
+  if (!new Set(["android11", "android15"]).has(edition)) {
+    return json({ error: "Unsupported Android edition." }, 400);
+  }
+
   const now = Date.now();
   if (now - (lastCreate.get(user.id) || 0) < 8000) return json({ error: "Your cloud phone is already starting - give it a few seconds." }, 429);
   lastCreate.set(user.id, now);
   try {
     await ensureSchema(env);
     const phoneId = "phone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
-    const row = await createPhoneRow(user.id, phoneId, "android11", env, user.role === "admin" ? null : MAX_FREE);
+    const row = await createPhoneRow(user.id, phoneId, edition, env, user.role === "admin" ? null : MAX_FREE);
     if (!row) return json({ error: "You already have 5 cloud phones. Delete some cloud phones to get a new one.", code: "LIMIT" }, 409);
-    try { await dispatchPhone(phoneId, env); }
+    try { await dispatchPhone(phoneId, env, edition); }
     catch (error) {
       if (error?.code === "DISPATCH_UNKNOWN") {
         // The request may have reached GitHub before its response was lost.

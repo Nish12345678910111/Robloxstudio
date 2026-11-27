@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const startScript = readFileSync(new URL("../scripts/mobile-phone/start.sh", import.meta.url), "utf8");
+const workflowScript = readFileSync(new URL("../.github/workflows/cloud-phone.yml", import.meta.url), "utf8");
 const viewerScript = readFileSync(new URL("../scripts/mobile-phone/viewer.py", import.meta.url), "utf8");
+const githubScript = readFileSync(new URL("../functions/_lib/github.js", import.meta.url), "utf8");
+const phonesApiScript = readFileSync(new URL("../functions/api/phones.js", import.meta.url), "utf8");
 const dashboardScript = readFileSync(new URL("../cloudflare-pages/src/shared/Dashboard.jsx", import.meta.url), "utf8");
 
 test("cloud phone mirrors a headless emulator without host dialogs or emulator controls", () => {
@@ -20,6 +23,18 @@ test("the selected cloud-phone RAM, CPU and disk values reach the emulator", () 
   assert.match(startScript, /-memory "\$RAM_MB" -cores "\$CPU_CORES"/);
   assert.match(startScript, /-partition-size "\$\(\(DISK_GB \* 1024\)\)"/);
   assert.doesNotMatch(startScript, /-memory 4096 -cores 4/);
+});
+
+test("Android 15 is an opt-in compatibility profile while Android 11 stays the default", () => {
+  assert.match(workflowScript, /default: "android11"[\s\S]*options: \["android11", "android15"\]/);
+  assert.match(startScript, /android11\) ANDROID_API_LEVEL=30/);
+  assert.match(startScript, /android15\) ANDROID_API_LEVEL=35/);
+  assert.match(startScript, /IMG_PKG="system-images;android-\$\{ANDROID_API_LEVEL\};google_apis;x86_64"/);
+  assert.match(workflowScript, /cloud-phone-emulator-v6-\$\{\{ inputs\.edition \}\}/);
+  assert.match(phonesApiScript, /const edition = requestBody\?\.edition \?\? "android11"/);
+  assert.match(phonesApiScript, /dispatchPhone\(phoneId, env, edition\)/);
+  assert.match(githubScript, /edition: selectedEdition/);
+  assert.match(dashboardScript, /Android 15 \(compatibility test\)/);
 });
 
 test("soft keyboard is configured before emulator launch and VNC accepts mapped keys", () => {
