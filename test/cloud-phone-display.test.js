@@ -32,15 +32,31 @@ test("Android 15 profiles are opt-in and Android 11 stays the default", () => {
   assert.match(startScript, /android15-arm64\) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=arm64-v8a/);
   assert.match(startScript, /PHONE_SYSTEM_IMAGE="system-images;android-\$\{ANDROID_API_LEVEL\};google_apis;\$\{ANDROID_ABI\}"/);
   assert.match(startScript, /IMG_PKG="\$PHONE_SYSTEM_IMAGE"/);
-  assert.ok(startScript.includes('if [ "$ANDROID_ABI" = "x86_64" ] && [ -w /dev/kvm ]; then ACCEL="on"; fi'));
+  assert.match(startScript, /x86_64:x86_64\|arm64-v8a:aarch64\|arm64-v8a:arm64/);
+  assert.match(workflowScript, /runs-on: \$\{\{ inputs\.edition == 'android15-arm64' && 'ubuntu-24\.04-arm'/);
+  assert.match(workflowScript, /cloudflared-bin-v2-\$\{\{ runner\.arch \}\}/);
   assert.match(startScript, /SCREEN_START_TIMEOUT=960/);
   assert.match(startScript, /BOOT_WAIT_ATTEMPTS=180/);
-  assert.match(workflowScript, /cloud-phone-emulator-v6-\$\{\{ inputs\.edition \}\}/);
+  assert.match(startScript, /SDKMANAGER_LOG="\$WORKDIR_PHONE\/sdkmanager\.log"/);
+  assert.match(workflowScript, /Report safe Android startup diagnostics/);
+  assert.match(workflowScript, /cloud-phone-runtime-v8-\$\{\{ inputs\.edition \}\}/);
+  assert.match(workflowScript, /\.phone-vm\/cuttlefish/);
   assert.match(workflowScript, /PHASE: "1"\s+EDITION: \$\{\{ inputs\.edition \}\}/);
   assert.match(phonesApiScript, /PHONE_EDITIONS = new Set\(\["android11", "android15", "android15-arm64"\]\)/);
   assert.match(phonesApiScript, /dispatchPhone\(phoneId, env, edition\)/);
   assert.match(githubScript, /"android15-arm64" \? edition/);
-  assert.match(dashboardScript, /Android 15 ARM64 guest \(slow software emulation\)/);
+  assert.match(dashboardScript, /Android 15 ARM64 guest \(Cuttlefish ARM64 runner\)/);
+});
+
+test("the ARM64 pilot uses the matching Cuttlefish phone image and ADB endpoint", () => {
+  assert.match(startScript, /PHONE_SYSTEM_IMAGE="Cuttlefish android15-qpr2-release\/aosp_cf_arm64_only_phone-userdebug"/);
+  assert.match(startScript, /The ARM64 Cuttlefish profile requires an ARM64 host/);
+  assert.match(startScript, /The ARM64 Cuttlefish profile requires writable \/dev\/kvm/);
+  assert.match(startScript, /apt_get install -y -qq cuttlefish-base cuttlefish-user/);
+  assert.match(startScript, /cvd fetch --default_build=android15-qpr2-release\/aosp_cf_arm64_only_phone-userdebug/);
+  assert.match(startScript, /cvd create --host_path="\$CVD_DIR" --product_path="\$CVD_DIR"/);
+  assert.match(startScript, /SERIAL="localhost:6520"/);
+  assert.match(startScript, /adb connect "\$SERIAL"/);
 });
 
 test("soft keyboard is configured before emulator launch and VNC accepts mapped keys", () => {

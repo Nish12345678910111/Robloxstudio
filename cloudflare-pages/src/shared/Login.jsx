@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-export default function Login({ configured, adSlot = null }) {
-  const [mode, setMode] = useState("login");
+export default function Login({ configured, adSlot = null, initialMode = "login" }) {
+  const mode = initialMode === "register" ? "register" : "login";
   const [name, setName] = useState(""), [username, setUsername] = useState(""), [pw, setPw] = useState("");
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
   const [vpn, setVpn] = useState(false);
@@ -25,10 +25,11 @@ export default function Login({ configured, adSlot = null }) {
     {err && <p className="err">{err}</p>}{vpn && <p className="warn">🚫 This page is disabled while a VPN / proxy is on. Turn it off and reload.</p>}
     <button className="primary" disabled={busy || vpn || (mode === "register" && !agree)}>{busy ? "Please wait…" : mode === "register" ? "Create account →" : "Login →"}</button>
     <p className="switch">{mode === "register"
-      ? <>Already have an account? <a href="#" onClick={e => { e.preventDefault(); setMode("login"); setErr(""); }}>Login</a></>
-      : <>New here? <a href="#" onClick={e => { e.preventDefault(); setMode("register"); setErr(""); }}>Create account</a></>}</p>
+      ? <>Already have an account? <a href="/cloudphone/login">Login</a></>
+      : <>New here? <a href="/cloudphone/signup">Create account</a></>}</p>
     <p className="tiny">🔒 Passwords are stored only as secure hashes. Max 5 free cloud phones per account.</p>
     <p className="tiny"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a><br />Created by <b>nishgamerr</b></p>
+    <p className="tiny"><a href="/home">← Nish Productions</a></p>
   </form>);
   return (<main className="loginWrap">{adSlot ? <div className="loginStack">{form}{adSlot}</div> : form}</main>);
 }
