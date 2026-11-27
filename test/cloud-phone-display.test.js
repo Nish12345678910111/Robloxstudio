@@ -39,12 +39,24 @@ test("Android 15 profiles are opt-in and Android 11 stays the default", () => {
   assert.match(startScript, /BOOT_WAIT_ATTEMPTS=180/);
   assert.match(startScript, /SDKMANAGER_LOG="\$WORKDIR_PHONE\/sdkmanager\.log"/);
   assert.match(workflowScript, /Report safe Android startup diagnostics/);
-  assert.match(workflowScript, /cloud-phone-emulator-v7-\$\{\{ inputs\.edition \}\}/);
+  assert.match(workflowScript, /cloud-phone-runtime-v8-\$\{\{ inputs\.edition \}\}/);
+  assert.match(workflowScript, /\.phone-vm\/cuttlefish/);
   assert.match(workflowScript, /PHASE: "1"\s+EDITION: \$\{\{ inputs\.edition \}\}/);
   assert.match(phonesApiScript, /PHONE_EDITIONS = new Set\(\["android11", "android15", "android15-arm64"\]\)/);
   assert.match(phonesApiScript, /dispatchPhone\(phoneId, env, edition\)/);
   assert.match(githubScript, /"android15-arm64" \? edition/);
-  assert.match(dashboardScript, /Android 15 ARM64 guest \(hosted ARM64 runner\)/);
+  assert.match(dashboardScript, /Android 15 ARM64 guest \(Cuttlefish ARM64 runner\)/);
+});
+
+test("the ARM64 pilot uses the matching Cuttlefish phone image and ADB endpoint", () => {
+  assert.match(startScript, /PHONE_SYSTEM_IMAGE="Cuttlefish android15-qpr2-release\/aosp_cf_arm64_only_phone-userdebug"/);
+  assert.match(startScript, /The ARM64 Cuttlefish profile requires an ARM64 host/);
+  assert.match(startScript, /The ARM64 Cuttlefish profile requires writable \/dev\/kvm/);
+  assert.match(startScript, /apt_get install -y -qq cuttlefish-base cuttlefish-user/);
+  assert.match(startScript, /cvd fetch --default_build=android15-qpr2-release\/aosp_cf_arm64_only_phone-userdebug/);
+  assert.match(startScript, /cvd create --host_path="\$CVD_DIR" --product_path="\$CVD_DIR"/);
+  assert.match(startScript, /SERIAL="localhost:6520"/);
+  assert.match(startScript, /adb connect "\$SERIAL"/);
 });
 
 test("soft keyboard is configured before emulator launch and VNC accepts mapped keys", () => {

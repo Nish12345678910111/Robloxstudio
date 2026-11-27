@@ -118,7 +118,7 @@ jobs:
           chmod +x scripts/mobile-phone/start.sh
           ./scripts/mobile-phone/start.sh
 
-      - name: Cache Android Emulator (SDK + phone image)
+      - name: Cache Android runtime (SDK + Cuttlefish image)
         uses: actions/cache@v4
         with:
           path: |
@@ -130,7 +130,8 @@ jobs:
             .phone-vm/sdk/system-images
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
-          key: cloud-phone-emulator-v7-${{ inputs.edition }}
+            .phone-vm/cuttlefish
+          key: cloud-phone-runtime-v8-${{ inputs.edition }}
 
       - name: Start Cloud Phone
         id: start_phone
@@ -159,8 +160,8 @@ jobs:
           from pathlib import Path
 
           root = Path(os.environ["PHONE_WORKDIR"])
-          names = ("sdkmanager.log", "emulator.log", "setup-skip.log", "scrcpy.log")
-          interesting = ("error", "failed", "not found", "unsupported", "warning", "unable", "could not", "did not", "timed out", "timeout", "fatal", "exception", "boot", "image", "accel", "kvm", "qemu", "emulator", "scrcpy")
+          names = ("sdkmanager.log", "cuttlefish.log", "emulator.log", "setup-skip.log", "scrcpy.log")
+          interesting = ("error", "failed", "not found", "unsupported", "warning", "unable", "could not", "did not", "timed out", "timeout", "fatal", "exception", "boot", "image", "accel", "kvm", "qemu", "emulator", "scrcpy", "cuttlefish", "cvd", "fetch")
           sensitive = ("password", "token", "secret", "aiven_database_url", "trycloudflare.com", "http://", "https://")
           found = False
           for name in names:
@@ -179,7 +180,7 @@ jobs:
               print("::error title=Cloud Phone startup::No safe emulator diagnostics were written.")
           PY
 
-      - name: Save Android Emulator to cache (including after a startup failure)
+      - name: Save Android runtime to cache (including after a startup failure)
         if: always() && steps.start_phone.outputs.sdk_cache_ready == 'true'
         continue-on-error: true
         uses: actions/cache/save@v4
@@ -193,7 +194,8 @@ jobs:
             .phone-vm/sdk/system-images
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
-          key: cloud-phone-emulator-v7-${{ inputs.edition }}
+            .phone-vm/cuttlefish
+          key: cloud-phone-runtime-v8-${{ inputs.edition }}
 
       - name: Keep phone alive (until session ends or run is cancelled)
         env:

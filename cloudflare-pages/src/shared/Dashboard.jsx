@@ -134,7 +134,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     const r = await fetch("/api/phones", { cache: "no-store" }).catch(() => null);
     if (!r) { setNotice("Many users are using free cloud phones, try again later."); return; }
     if (r.ok) { const d = await r.json().catch(() => ({})); setPhones(d.phones || []); setNotice(d.notice || null); }
-    else if (r.status === 401) location.replace("/login");
+    else if (r.status === 401) location.replace("/cloudphone/login");
     else { const d = await r.json().catch(() => ({})); setNotice(d.error || "Many users are using free cloud phones, try again later."); }
   }, [setNotice]);
   useEffect(() => { load(); }, [load]);
@@ -210,7 +210,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     if (pw === null) return;
     const r = await fetch("/api/me", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) }).catch(() => null);
     const d = await r?.json().catch(() => ({})) || {};
-    if (r?.ok && d.ok) location.href = "/login";
+    if (r?.ok && d.ok) location.href = "/cloudphone/login";
     else alert(d.error || "Could not delete account. Please try again.");
   }
   const visibleAll = phones.filter(p => !hidden.has(String(p.runId)) && !hidden.has(String(p.phoneId)));
@@ -231,7 +231,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
         <select value={phoneEdition} onChange={e => setPhoneEdition(e.target.value)}>
           <option value="android11">Android 11 (current)</option>
           <option value="android15">Android 15 x86_64 (compatibility test)</option>
-          <option value="android15-arm64">Android 15 ARM64 guest (hosted ARM64 runner)</option>
+          <option value="android15-arm64">Android 15 ARM64 guest (Cuttlefish ARM64 runner)</option>
         </select>
       </label>
       <button className="primary wide" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button>

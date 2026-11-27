@@ -21,6 +21,6 @@ export default function LegalRoute({ privacy = false }) {
       <h2>6. Ending access</h2><p>Accounts or phones that break these terms may be stopped or removed by the team at any time. You can delete your own account whenever you like from your dashboard.</p>
       <p className="muted">Questions about these terms? Reach out to the creator, <b>nishgamerr</b>, through the service.</p>
     </>}
-    <p><a className="btnLink" href="/login">← Back to login</a> · <a href={privacy ? "/terms" : "/privacy"}>{privacy ? "Terms of Service" : "Privacy Policy"}</a></p>
+    <p><a className="btnLink" href="/cloudphone/login">← Back to login</a> · <a href={privacy ? "/terms" : "/privacy"}>{privacy ? "Terms of Service" : "Privacy Policy"}</a></p>
   </main>);
 }

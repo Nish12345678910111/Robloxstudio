@@ -7,12 +7,13 @@ const SECURITY_HEADERS = {
   "X-Frame-Options": "SAMEORIGIN",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
-  "X-Robots-Tag": "noindex, nofollow, noarchive",
 };
 
-function withSecurityHeaders(response) {
+function withSecurityHeaders(response, pathname) {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+  if (pathname === "/" || pathname === "/home" || pathname === "/home/") headers.delete("X-Robots-Tag");
+  else headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
 
   // Preserve multiple Set-Cookie headers when the upstream runtime exposes them.
   const cookies = response.headers.getSetCookie?.() || [];
@@ -81,5 +82,5 @@ export async function onRequest({ request, next, env }) {
   } else {
     response = await next();
   }
-  return withSecurityHeaders(response);
+  return withSecurityHeaders(response, new URL(request.url).pathname);
 }

@@ -1,4 +1,8 @@
-# ☁️📱 NishCloudPhone
+# Nish Productions
+
+The public home for Nishgamerr's web tools, experiments, and projects. Visit `/home` for the searchable developments page. Cloud Phone account and dashboard pages live under `/cloudphone`.
+
+## ☁️📱 NishCloudPhone
 
 Free cloud phones that run in your browser — no downloads, no installs.
 Just create an account, tap **＋ New Cloud Phone**, and your phone appears on screen.
@@ -46,6 +50,6 @@ Vercel uses `vercel.json` and `npm run vercel:build`. It hosts the shared API ha
 
 ## Cloud Phone display and input
 
-The GitHub workflow runs Android Emulator headlessly and mirrors only the device display with scrcpy into Xvfb. The official noVNC client over x11vnc/websockify remains the remote viewer and input path, so the emulator's host warning dialogs and control toolbar are not part of the phone screen. The AVD disables its hard keyboard so Android's on-screen keyboard opens on tap; scrcpy control and clipboard autosync stay enabled for noVNC keyboard and clipboard input.
+The default Android 11 and opt-in Android 15 x86_64 profiles run Android Emulator headlessly and mirror only the device display with scrcpy into Xvfb. The opt-in Android 15 ARM64 profile experiments with Cuttlefish on a hosted ARM64 runner. All profiles use the official noVNC client over x11vnc/websockify for viewing and input; emulator host dialogs and controls are kept out of the mirrored display. On-screen keyboard support and noVNC keyboard/clipboard input are enabled.
 
-Phone starts still need a GitHub-hosted runner to boot and initialize Android. The SDK cache reduces repeat startup work after its first successful preparation, but a cold runner cannot start literally instantly.
+Phone starts still need a GitHub-hosted runner to boot and initialize Android. The SDK/runtime cache reduces repeat startup work after its first successful preparation, but a cold runner cannot start literally instantly. The ARM64 Cuttlefish profile remains experimental.

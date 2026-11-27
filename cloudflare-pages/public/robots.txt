@@ -1,2 +1,7 @@
 User-agent: *
-Disallow: /
+Allow: /
+Disallow: /api
+Disallow: /cloudphone
+Disallow: /login
+Disallow: /terms
+Disallow: /privacy

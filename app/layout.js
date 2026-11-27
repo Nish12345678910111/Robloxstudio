@@ -1,9 +1,9 @@
 import "../cloudflare-pages/src/shared/globals.css";
 
 export const metadata = {
-  title: "NishCloudPhone",
-  description: "Free cloud phones in your browser. Created by nishgamerr.",
-  robots: { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false } },
+  title: { default: "Nish Productions", template: "%s | Nish Productions" },
+  description: "Explore Nish Productions: web tools, experiments, and projects made by nishgamerr.",
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }) {

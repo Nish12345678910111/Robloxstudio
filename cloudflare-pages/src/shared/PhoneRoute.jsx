@@ -10,7 +10,7 @@ function Loading({ text = "Loading your cloud phone…" }) {
 function Problem({ text = BUSY, action = "Try again", onAction = () => location.reload() }) {
   return <main className="wrap"><div className="notFound"><div className="nfIcon">📱</div><h1>Cloud phone</h1>
     <p className="muted">{text}</p><button className="primary" onClick={onAction}>{action}</button>
-    <p><a href="/login">Back to login</a></p></div></main>;
+    <p><a href="/cloudphone/login">Back to login</a></p></div></main>;
 }
 
 export default function PhoneRoute({ phoneId }) {
@@ -21,7 +21,7 @@ export default function PhoneRoute({ phoneId }) {
     fetch("/api/me", { cache: "no-store" }).then(async r => ({ status: r.status, data: await r.json().catch(() => ({})) }))
       .then(async ({ status, data }) => {
         if (!live) return;
-        if (status === 401) { location.replace("/login"); return; }
+        if (status === 401) { location.replace("/cloudphone/login"); return; }
         if (data.vpn) { setState({ vpn: true }); return; }
         if (!data.user) { setState({ error: true }); return; }
         const r = await fetch("/api/phones/" + encodeURIComponent(phoneId), { cache: "no-store" });
@@ -45,7 +45,7 @@ export default function PhoneRoute({ phoneId }) {
   if (state.vpn) return <Problem text="This page is disabled while a VPN or proxy is on. Turn it off and reload." action="Reload" />;
   if (state.error) return <Problem />;
   if (state.missing) return <main className="wrap"><div className="notFound"><div className="nfIcon">📱🔍</div><h1>Cloud phone not found</h1>
-    <p className="muted">This phone is not in your account. It may have been deleted, or it belongs to someone else.</p><a className="btnLink" href="/">← My cloud phones</a></div></main>;
+    <p className="muted">This phone is not in your account. It may have been deleted, or it belongs to someone else.</p><a className="btnLink" href="/cloudphone">← My cloud phones</a></div></main>;
 
   const phone = state.phone;
   // The tunnel serves the official noVNC client at the token-gated /s/<hash>
@@ -60,7 +60,7 @@ export default function PhoneRoute({ phoneId }) {
     : screen;
 
   return <main className="wrap">
-    <header className="top"><div><h1>📱 Cloud Phone</h1><p className="muted">{phone.phone_id} · {phone.edition === "android15-arm64" ? "Android 15 ARM64 guest pilot" : phone.edition === "android15" ? "Android 15 x86_64 test" : "Android 11"} · {phone.status}</p></div><a className="btnLink" href="/">← My cloud phones</a></header>
+    <header className="top"><div><h1>📱 Cloud Phone</h1><p className="muted">{phone.phone_id} · {phone.edition === "android15-arm64" ? "Android 15 ARM64 guest pilot" : phone.edition === "android15" ? "Android 15 x86_64 test" : "Android 11"} · {phone.status}</p></div><a className="btnLink" href="/cloudphone">← My cloud phones</a></header>
     <div className="credBox"><p><b>Url -</b> {screen ? <a href={screen} target="_blank" rel="noreferrer">{screen}</a> : "starting…"}</p>
       <p><b>Password -</b> {phone.phone_password ? <code>{phone.phone_password}</code> : "•••••••• (appears when ready)"}</p></div>
     {fallback && <p className="footLinks" style={{ maxWidth: 430, margin: "0 auto 10px" }}><a href={fallback} target="_blank" rel="noreferrer">Fallback screen (noVNC) ↗</a></p>}
