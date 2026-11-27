@@ -1,10 +1,10 @@
 name: Cloud Phone
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
-# Android 11 in the official Android Emulator -> own viewer -> random
-# tunnel URL + password. The phone's URL/password are stored only in the
-# owner's account database row (via the AIVEN_DATABASE_URL secret). They
-# are never printed in logs, never uploaded, and never committed.
+# Android 11/15 x86_64 use the Linux x86_64 runner. The optional Android 15
+# ARM64 guest uses a Linux ARM64 runner so its system image matches the host.
+# The phone's URL/password are stored only in the owner's account database row
+# (via AIVEN_DATABASE_URL); they are never printed, uploaded, or committed.
 #
 # A job can run at most 360 minutes (~6h). Nothing can run "forever" -
 # when a run ends, just start a new phone.
@@ -20,7 +20,7 @@ on:
         default: "manual"
         type: string
       edition:
-        description: "Android edition (ARM64 guest uses slow software emulation on x86_64)"
+        description: "Android edition (ARM64 guest uses a hosted ARM64 runner; experimental)"
         required: true
         default: "android11"
         type: choice
@@ -59,7 +59,7 @@ permissions:
 jobs:
   cloud-phone:
     name: Cloud Phone
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.edition == 'android15-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 360
 
     steps:
@@ -76,22 +76,28 @@ jobs:
           sudo udevadm trigger --name-match=kvm || true
           sudo chmod 666 /dev/kvm || true
           if [ -w /dev/kvm ]; then echo "Acceleration: READY"; else echo "Acceleration: software mode"; fi
+          echo "Host architecture: $(uname -m)"
           nproc; free -h
 
       - name: Cache cloudflared binary
         uses: actions/cache@v4
         with:
           path: ~/cloudflared-bin
-          key: cloudflared-bin-v1
+          key: cloudflared-bin-v2-${{ runner.arch }}
 
       - name: Install cloudflared (Cloudflare Tunnel)
         run: |
+          case "$(uname -m)" in
+            x86_64) CLOUDFLARED_ARCH=amd64 ;;
+            aarch64|arm64) CLOUDFLARED_ARCH=arm64 ;;
+            *) echo "Unsupported Cloud Phone host architecture: $(uname -m)" >&2; exit 2 ;;
+          esac
           if [ -x ~/cloudflared-bin/cloudflared ]; then
             cp ~/cloudflared-bin/cloudflared /tmp/cloudflared
           else
             for i in 1 2 3 4 5; do
               curl -fL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/cloudflared \
-                https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && break
+                "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CLOUDFLARED_ARCH}" && break
               echo "cloudflared download attempt $i failed, retrying..."; sleep 10
             done
             mkdir -p ~/cloudflared-bin && cp /tmp/cloudflared ~/cloudflared-bin/cloudflared || true
@@ -106,6 +112,7 @@ jobs:
           PHONE_ID: ${{ inputs.phone_id }}
           PHASE: "1"
           EDITION: ${{ inputs.edition }}
+          ANDROID_SDK_ROOT: ${{ inputs.edition == 'android15-arm64' && format('{0}/.phone-vm/sdk', github.workspace) || '/usr/local/lib/android/sdk' }}
           AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
         run: |
           chmod +x scripts/mobile-phone/start.sh
@@ -117,7 +124,13 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-          key: cloud-phone-emulator-v6-${{ inputs.edition }}
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/cmdline-tools
+            .phone-vm/sdk/emulator
+            .phone-vm/sdk/system-images
+            .phone-vm/sdk/platform-tools
+            .phone-vm/sdk/cmdline-tools
+          key: cloud-phone-emulator-v7-${{ inputs.edition }}
 
       - name: Start Cloud Phone
         id: start_phone
@@ -130,6 +143,7 @@ jobs:
           DISK_GB: ${{ inputs.disk_gb }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           EDITION: ${{ inputs.edition }}
+          ANDROID_SDK_ROOT: ${{ inputs.edition == 'android15-arm64' && format('{0}/.phone-vm/sdk', github.workspace) || '/usr/local/lib/android/sdk' }}
           AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
         run: |
           chmod +x scripts/mobile-phone/start.sh
@@ -173,7 +187,13 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images
-          key: cloud-phone-emulator-v6-${{ inputs.edition }}
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/cmdline-tools
+            .phone-vm/sdk/emulator
+            .phone-vm/sdk/system-images
+            .phone-vm/sdk/platform-tools
+            .phone-vm/sdk/cmdline-tools
+          key: cloud-phone-emulator-v7-${{ inputs.edition }}
 
       - name: Keep phone alive (until session ends or run is cancelled)
         env:

@@ -38,6 +38,7 @@ cd "$WORKDIR_PHONE"
 # Resolve the SDK location NOW so the viewer launched below can use adb for
 # the dashboard's APK-install action. noVNC remains the remote-control layer.
 SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+mkdir -p "$SDK_EARLY"
 export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
 
 # Viewer password (name kept for compatibility with the workflow env).
@@ -294,17 +295,20 @@ if ! kill -0 "$(cat xvfb.pid)" 2>/dev/null; then
   tail -n 40 xvfb.log 2>/dev/null || true
   exit 1
 fi
+HOST_ARCH="$(uname -m)"
 ACCEL="off"
-# The ARM64 guest image cannot use x86 KVM acceleration on ubuntu-latest.
-# Keep the guest-ABI experiment opt-in and use software emulation.
-if [ "$ANDROID_ABI" = "x86_64" ] && [ -w /dev/kvm ]; then ACCEL="on"; fi
+# Use KVM only when the guest and runner use the same CPU architecture.
+case "$ANDROID_ABI:$HOST_ARCH" in
+  x86_64:x86_64|arm64-v8a:aarch64|arm64-v8a:arm64)
+    if [ -w /dev/kvm ]; then ACCEL="on"; fi ;;
+esac
 BOOT_WAIT_ATTEMPTS=120
 SCREEN_START_TIMEOUT=180
-if [ "$ANDROID_ABI" = "arm64-v8a" ]; then
-  # An ARM64 guest on this x86_64 runner uses slow software CPU emulation.
+if [ "$ANDROID_ABI" = "arm64-v8a" ] && { [ "$HOST_ARCH" != "aarch64" ] && [ "$HOST_ARCH" != "arm64" ] || [ ! -w /dev/kvm ]; }; then
+  # Cross-ISA or unaccelerated ARM emulation can take considerably longer.
   BOOT_WAIT_ATTEMPTS=180
   SCREEN_START_TIMEOUT=960
-  echo "ARM64 guest uses software emulation; first boot may take several minutes."
+  echo "ARM64 guest uses software CPU emulation on host $HOST_ARCH."
 fi
 launch_emu() {
   # Run the emulator headlessly so its host warning dialogs and control panel

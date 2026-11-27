@@ -231,7 +231,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
         <select value={phoneEdition} onChange={e => setPhoneEdition(e.target.value)}>
           <option value="android11">Android 11 (current)</option>
           <option value="android15">Android 15 x86_64 (compatibility test)</option>
-          <option value="android15-arm64">Android 15 ARM64 guest (slow software emulation)</option>
+          <option value="android15-arm64">Android 15 ARM64 guest (hosted ARM64 runner)</option>
         </select>
       </label>
       <button className="primary wide" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button>

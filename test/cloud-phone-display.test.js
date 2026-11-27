@@ -32,17 +32,19 @@ test("Android 15 profiles are opt-in and Android 11 stays the default", () => {
   assert.match(startScript, /android15-arm64\) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=arm64-v8a/);
   assert.match(startScript, /PHONE_SYSTEM_IMAGE="system-images;android-\$\{ANDROID_API_LEVEL\};google_apis;\$\{ANDROID_ABI\}"/);
   assert.match(startScript, /IMG_PKG="\$PHONE_SYSTEM_IMAGE"/);
-  assert.ok(startScript.includes('if [ "$ANDROID_ABI" = "x86_64" ] && [ -w /dev/kvm ]; then ACCEL="on"; fi'));
+  assert.match(startScript, /x86_64:x86_64\|arm64-v8a:aarch64\|arm64-v8a:arm64/);
+  assert.match(workflowScript, /runs-on: \$\{\{ inputs\.edition == 'android15-arm64' && 'ubuntu-24\.04-arm'/);
+  assert.match(workflowScript, /cloudflared-bin-v2-\$\{\{ runner\.arch \}\}/);
   assert.match(startScript, /SCREEN_START_TIMEOUT=960/);
   assert.match(startScript, /BOOT_WAIT_ATTEMPTS=180/);
   assert.match(startScript, /SDKMANAGER_LOG="\$WORKDIR_PHONE\/sdkmanager\.log"/);
   assert.match(workflowScript, /Report safe Android startup diagnostics/);
-  assert.match(workflowScript, /cloud-phone-emulator-v6-\$\{\{ inputs\.edition \}\}/);
+  assert.match(workflowScript, /cloud-phone-emulator-v7-\$\{\{ inputs\.edition \}\}/);
   assert.match(workflowScript, /PHASE: "1"\s+EDITION: \$\{\{ inputs\.edition \}\}/);
   assert.match(phonesApiScript, /PHONE_EDITIONS = new Set\(\["android11", "android15", "android15-arm64"\]\)/);
   assert.match(phonesApiScript, /dispatchPhone\(phoneId, env, edition\)/);
   assert.match(githubScript, /"android15-arm64" \? edition/);
-  assert.match(dashboardScript, /Android 15 ARM64 guest \(slow software emulation\)/);
+  assert.match(dashboardScript, /Android 15 ARM64 guest \(hosted ARM64 runner\)/);
 });
 
 test("soft keyboard is configured before emulator launch and VNC accepts mapped keys", () => {
