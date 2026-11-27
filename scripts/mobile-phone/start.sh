@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  NishCloudPhone - Android 11/15 in the official Android Emulator (headless).
+#  NishCloudPhone - Android 11/15 x86_64 plus an ARM64 guest experiment.
 #  scrcpy renders only the Android display into Xvfb; official noVNC serves
 #  that clean screen and forwards keyboard/clipboard input to the phone.
 #  The password-gated noVNC proxy + tunnel + Url/Password go live FIRST.
@@ -16,11 +16,16 @@ case "$CPU_CORES" in 2|4) ;; *) echo "Unsupported CPU_CORES: $CPU_CORES" >&2; ex
 case "$DISK_GB" in 16|32) ;; *) echo "Unsupported DISK_GB: $DISK_GB" >&2; exit 2 ;; esac
 EDITION="${EDITION:-android11}"
 case "$EDITION" in
-  android11) ANDROID_API_LEVEL=30; ANDROID_VERSION=11 ;;
-  android15) ANDROID_API_LEVEL=35; ANDROID_VERSION=15 ;;
+  android11) ANDROID_API_LEVEL=30; ANDROID_VERSION=11; ANDROID_ABI=x86_64 ;;
+  android15) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=x86_64 ;;
+  android15-arm64) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=arm64-v8a ;;
   *) echo "Unsupported Android edition: $EDITION" >&2; exit 2 ;;
 esac
-echo ">>> Android $ANDROID_VERSION compatibility profile: $EDITION"
+echo ">>> Android $ANDROID_VERSION compatibility profile: $EDITION ($ANDROID_ABI)"
+PHONE_SYSTEM_IMAGE="system-images;android-${ANDROID_API_LEVEL};google_apis;${ANDROID_ABI}"
+export PHONE_PROFILE_EDITION="$EDITION" PHONE_PROFILE_API="$ANDROID_API_LEVEL"
+export PHONE_PROFILE_ABI="$ANDROID_ABI" PHONE_PROFILE_HOST_ARCH="$(uname -m)"
+export PHONE_PROFILE_IMAGE="$PHONE_SYSTEM_IMAGE"
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$WORKDIR_PHONE"
@@ -198,8 +203,8 @@ fi
 AVD_HOME_DIR="$WORKDIR_PHONE/avd"; mkdir -p "$AVD_HOME_DIR"
 export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
 export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
-IMG_PKG="system-images;android-${ANDROID_API_LEVEL};google_apis;x86_64"
-IMG_DIR="$SDK/system-images/android-${ANDROID_API_LEVEL}/google_apis/x86_64"
+IMG_PKG="$PHONE_SYSTEM_IMAGE"
+IMG_DIR="$SDK/system-images/android-${ANDROID_API_LEVEL}/google_apis/${ANDROID_ABI}"
 # Licenses + installs ONLY when something is actually missing (cache hits
 # skip all of this - no more sdkmanager noise/time on the fast path).
 if [ ! -x "$SDK/emulator/emulator" ] || [ ! -s "$IMG_DIR/system.img" ]; then
@@ -280,7 +285,18 @@ if ! kill -0 "$(cat xvfb.pid)" 2>/dev/null; then
   tail -n 40 xvfb.log 2>/dev/null || true
   exit 1
 fi
-ACCEL="off"; [ -w /dev/kvm ] && ACCEL="on"
+ACCEL="off"
+# The ARM64 guest image cannot use x86 KVM acceleration on ubuntu-latest.
+# Keep the guest-ABI experiment opt-in and use software emulation.
+if [ "$ANDROID_ABI" = "x86_64" ] && [ -w /dev/kvm ]; then ACCEL="on"; fi
+BOOT_WAIT_ATTEMPTS=120
+SCREEN_START_TIMEOUT=180
+if [ "$ANDROID_ABI" = "arm64-v8a" ]; then
+  # An ARM64 guest on this x86_64 runner uses slow software CPU emulation.
+  BOOT_WAIT_ATTEMPTS=180
+  SCREEN_START_TIMEOUT=960
+  echo "ARM64 guest uses software emulation; first boot may take several minutes."
+fi
 launch_emu() {
   # Run the emulator headlessly so its host warning dialogs and control panel
   # cannot leak into the phone screen. scrcpy below displays the guest only.
@@ -344,7 +360,7 @@ fi
 adb start-server >/dev/null 2>&1 || true
 (
   BOOTED=0
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 "$BOOT_WAIT_ATTEMPTS"); do
     if [ "$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" = "1" ]; then
       BOOTED=1
       break
@@ -413,7 +429,7 @@ adb start-server >/dev/null 2>&1 || true
 ) > setup-skip.log 2>&1 &
 
 if [ "${START_ONLY:-0}" = "1" ]; then
-  for _ in $(seq 1 180); do
+  for _ in $(seq 1 "$SCREEN_START_TIMEOUT"); do
     [ -f "$SCREEN_READY_FILE" ] && exit 0
     if ! emu_alive; then break; fi
     sleep 1

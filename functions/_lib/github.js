@@ -84,7 +84,7 @@ async function ghOk(path, options, env) {
 }
 
 export async function dispatchPhone(phoneId, env, edition = "android11") {
-  const selectedEdition = edition === "android15" ? "android15" : "android11";
+  const selectedEdition = edition === "android15" || edition === "android15-arm64" ? edition : "android11";
   const body = JSON.stringify({ ref: "main", inputs: {
     phone_id: phoneId, edition: selectedEdition, session_minutes: "340",
     ram_mb: "12288", cpu_cores: "4", disk_gb: "32",
@@ -136,7 +136,7 @@ export async function listPhones(fresh, env) {
     const item = {
       runId: run.id, name: title, status: run.status, conclusion: run.conclusion,
       createdAt: run.created_at, updatedAt: run.updated_at,
-      phoneId, edition: run.inputs?.edition === "android15" ? "android15" : "android11",
+      phoneId, edition: ["android15", "android15-arm64"].includes(run.inputs?.edition) ? run.inputs.edition : "android11",
       viewerUrl: null, tunnelUrl: null, password: null,
     };
     const key = phoneId === "…" ? `unknown:${run.id}` : phoneId;

@@ -30,6 +30,48 @@ ADB = shutil.which("adb") or next((p for p in (
     "/usr/local/lib/android/sdk/platform-tools/adb",
     os.path.expanduser("~/Android/Sdk/platform-tools/adb"),
 ) if os.path.exists(p)), "adb")
+RUNTIME_PROPERTIES = (
+    "ro.build.fingerprint",
+    "ro.build.version.release",
+    "ro.build.version.sdk",
+    "ro.product.cpu.abi",
+    "ro.product.cpu.abilist",
+    "ro.dalvik.vm.native.bridge",
+    "ro.dalvik.vm.native.bridge64",
+)
+
+
+def runtime_diagnostics():
+    lines = [
+        "Cloud Phone runtime context",
+        f"requested_profile: {os.environ.get('PHONE_PROFILE_EDITION', 'unknown')}",
+        f"host_arch: {os.environ.get('PHONE_PROFILE_HOST_ARCH', 'unknown')}",
+        f"requested_android_api: {os.environ.get('PHONE_PROFILE_API', 'unknown')}",
+        f"requested_guest_abi: {os.environ.get('PHONE_PROFILE_ABI', 'unknown')}",
+        f"requested_system_image: {os.environ.get('PHONE_PROFILE_IMAGE', 'unknown')}",
+    ]
+    try:
+        result = subprocess.run([ADB, "-s", SERIAL, "shell", "getprop"],
+                                capture_output=True, text=True, timeout=15, check=False)
+    except subprocess.TimeoutExpired:
+        lines.append("android_properties: unavailable (getprop timed out)")
+        return "\n".join(lines)
+    except Exception:
+        lines.append("android_properties: unavailable (getprop failed)")
+        return "\n".join(lines)
+    if result.returncode != 0:
+        lines.append(f"android_properties: unavailable (adb exit {result.returncode})")
+        return "\n".join(lines)
+    properties = {}
+    for line in (result.stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("[") or "]: [" not in line or not line.endswith("]"):
+            continue
+        key, value = line[1:-1].split("]: [", 1)
+        if key in RUNTIME_PROPERTIES:
+            properties[key] = value
+    lines.extend(f"{key}: {properties.get(key) or '<unset>'}" for key in RUNTIME_PROPERTIES)
+    return "\n".join(lines)
 
 LOGIN_PAGE = """<!doctype html><html><head><meta charset=utf-8>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -252,9 +294,10 @@ class Handler(BaseHTTPRequestHandler):
             if result.returncode != 0:
                 return self._send(502, "Could not read the phone crash log. Confirm the phone is running.",
                                   "text/plain; charset=utf-8", cors)
-            body = (result.stdout or "").strip()
-            if not body:
-                body = "No Android crash entries yet. Reproduce the force-close, then reload this page."
+            crash_buffer = (result.stdout or "").strip()
+            if not crash_buffer:
+                crash_buffer = "No Android crash entries yet. Reproduce the force-close, then reload this page."
+            body = runtime_diagnostics() + "\n\nAndroid crash buffer (logcat -b crash):\n" + crash_buffer
             return self._send(200, body[-64 * 1024:], "text/plain; charset=utf-8", cors)
         if not vnc_up():
             return self._send(503, STARTING_PAGE)
