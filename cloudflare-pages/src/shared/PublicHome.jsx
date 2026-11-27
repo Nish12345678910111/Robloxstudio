@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const DEVELOPMENTS = [
   {
@@ -13,32 +13,7 @@ const DEVELOPMENTS = [
     tone: "blue",
     href: "/cloudphone",
     action: "Explore Cloud Phone",
-    source: "https://github.com/Nish12345678910111/Robloxstudio",
     featured: true,
-  },
-  {
-    name: "Modern Chat",
-    type: "Web experiment",
-    status: "Live site",
-    description: "A real-time chat space with usernames, online presence, and a responsive interface.",
-    tags: ["Chat", "Realtime", "Web", "Community"],
-    mark: "✳",
-    tone: "violet",
-    href: "https://Nish12345678910111.github.io",
-    action: "Visit Modern Chat",
-    source: "https://github.com/Nish12345678910111/Nish12345678910111.io",
-  },
-  {
-    name: "Lua Script Library",
-    type: "Public repository",
-    status: "On GitHub",
-    description: "A public Lua and Luau collection with scripts, assets, and a lightweight browser page.",
-    tags: ["Lua", "Luau", "Roblox", "Scripts"],
-    mark: "{ }",
-    tone: "mint",
-    href: "https://github.com/Nish12345678910111/myscripts",
-    action: "Browse repository",
-    source: null,
   },
 ];
 
@@ -51,7 +26,6 @@ function SearchIcon() {
 }
 
 function ProjectCard({ project }) {
-  const external = /^https?:\/\//i.test(project.href);
   return (
     <article className={`np-project-card${project.featured ? " is-featured" : ""}`}>
       <div className="np-project-topline">
@@ -65,12 +39,7 @@ function ProjectCard({ project }) {
         {project.tags.map(tag => <li key={tag}>{tag}</li>)}
       </ul>
       <div className="np-project-actions">
-        <a className="np-project-link" href={project.href} {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
-          {project.action}<ArrowIcon />
-        </a>
-        {project.source && <a className="np-source-link" href={project.source} target="_blank" rel="noopener noreferrer" aria-label={`View ${project.name} source on GitHub`}>
-          <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor"><path d="M10 .8a9.2 9.2 0 0 0-2.91 17.93c.46.08.63-.2.63-.45v-1.6c-2.56.56-3.1-1.09-3.1-1.09-.42-1.07-1.03-1.36-1.03-1.36-.84-.58.06-.57.06-.57.93.06 1.42.95 1.42.95.82 1.4 2.15 1 2.68.76.08-.59.32-1 .58-1.23-2.05-.23-4.2-1.03-4.2-4.57 0-1.01.36-1.84.95-2.49-.1-.23-.41-1.18.09-2.46 0 0 .77-.25 2.53.95A8.8 8.8 0 0 1 10 5.25c.78 0 1.56.1 2.29.31 1.76-1.2 2.52-.95 2.52-.95.5 1.28.19 2.23.1 2.46.59.65.94 1.48.94 2.49 0 3.55-2.16 4.34-4.22 4.57.33.28.62.84.62 1.7v2.45c0 .25.17.54.63.45A9.2 9.2 0 0 0 10 .8Z" /></svg>
-        </a>}
+        <a className="np-project-link" href={project.href}>{project.action}<ArrowIcon /></a>
       </div>
     </article>
   );
@@ -78,6 +47,9 @@ function ProjectCard({ project }) {
 
 export default function PublicHome() {
   const [query, setQuery] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+  const drawerRef = useRef(null);
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return DEVELOPMENTS;
@@ -85,19 +57,75 @@ export default function PublicHome() {
       .join(" ").toLowerCase().includes(term));
   }, [query]);
 
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeButton = drawerRef.current?.querySelector(".np-drawer-close");
+    closeButton?.focus({ preventScroll: true });
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpen(false);
+        window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = drawerRef.current?.querySelectorAll("a[href], button:not([disabled])");
+      if (!focusable?.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  function closeMenu() {
+    setMenuOpen(false);
+    window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+  }
+
   return (
     <div className="np-home">
       <div className="np-home-grid-glow" aria-hidden="true" />
+      <button className={`np-menu-scrim${menuOpen ? " is-open" : ""}`} type="button" aria-label="Close navigation menu" aria-hidden={!menuOpen} inert={!menuOpen} tabIndex={menuOpen ? 0 : -1} onClick={closeMenu} />
+      <aside ref={drawerRef} id="np-site-menu" className={`np-nav-drawer${menuOpen ? " is-open" : ""}`} role="dialog" aria-modal="true" aria-labelledby="np-drawer-title" aria-hidden={!menuOpen} inert={!menuOpen}>
+        <div className="np-drawer-top">
+          <span className="np-drawer-kicker">NISH PRODUCTIONS</span>
+          <button className="np-drawer-close" type="button" aria-label="Close navigation menu" onClick={closeMenu}>×</button>
+        </div>
+        <h2 id="np-drawer-title">Where to?</h2>
+        <nav className="np-drawer-nav" aria-label="Site navigation">
+          <a href="/home" onClick={closeMenu}><span>01</span> Home</a>
+          <a href="#developments" onClick={closeMenu}><span>02</span> Developments</a>
+        </nav>
+        <div className="np-drawer-divider" />
+        <p className="np-drawer-kicker">INFORMATION</p>
+        <nav className="np-drawer-nav np-drawer-legal" aria-label="Policies">
+          <a href="/terms" onClick={closeMenu}>Terms of Service <span aria-hidden="true">↗</span></a>
+          <a href="/privacy" onClick={closeMenu}>Privacy Policy <span aria-hidden="true">↗</span></a>
+        </nav>
+        <p className="np-drawer-note">Made independently with curiosity.<br /><b>Created by nishgamerr</b></p>
+      </aside>
+
       <header className="np-home-header">
         <a className="np-home-brand" href="/home" aria-label="Nish Productions home">
           <span className="np-home-brand-mark" aria-hidden="true"><span>N</span><i /></span>
           <span className="np-home-brand-name">Nish <b>Productions</b></span>
         </a>
-        <nav className="np-home-nav" aria-label="Main navigation">
-          <a href="#developments">Developments</a>
-          <a href="https://github.com/Nish12345678910111" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
-        </nav>
-        <a className="np-home-nav-cta" href="/cloudphone/signup" aria-label="Get a free Cloud Phone"><span aria-hidden="true">☁</span> Free Cloud Phone <ArrowIcon /></a>
+        <button ref={menuButtonRef} className={`np-home-menu-button${menuOpen ? " is-open" : ""}`} type="button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="np-site-menu" onClick={() => setMenuOpen(open => !open)}>
+          <span className="np-home-menu-icon" aria-hidden="true"><i /><i /><i /></span>
+          <span>{menuOpen ? "Close" : "Menu"}</span>
+        </button>
       </header>
 
       <main>
@@ -126,7 +154,7 @@ export default function PublicHome() {
                 <div className="np-home-window-copy"><span className="np-home-kicker">FEATURED DEVELOPMENT</span><h2>Cloud<br />Phone</h2><p>Your Android, in a browser.</p><span className="np-home-window-chip">ANDROID&nbsp; · &nbsp;CLOUD</span></div>
                 <div className="np-home-device"><div className="np-home-device-notch" /><div className="np-home-device-screen"><span className="np-home-device-cloud">☁</span><b>Ready to explore</b><small>Tap into a new idea.</small><span className="np-home-device-button">Open phone <i>↗</i></span></div></div>
               </div>
-              <div className="np-home-window-footer"><span><i /> BROWSER BASED</span><span>01&nbsp; / &nbsp;03</span></div>
+              <div className="np-home-window-footer"><span><i /> BROWSER BASED</span><span>01&nbsp; / &nbsp;01</span></div>
             </div>
             <div className="np-home-float-card"><span className="np-home-float-icon">✦</span><span><b>Small ideas, live on the web</b><small>Tools · experiments · more</small></span></div>
             <span className="np-home-spark np-spark-one">✳</span><span className="np-home-spark np-spark-two">✦</span>
@@ -141,20 +169,20 @@ export default function PublicHome() {
           <div className="np-developments-heading">
             <div>
               <p className="np-home-eyebrow"><span /> The project shelf</p>
-              <h2 id="np-developments-title">Find your next <em>favorite.</em></h2>
-              <p className="np-developments-intro">Explore the projects and experiments currently out in the world.</p>
+              <h2 id="np-developments-title">Your project, <em>your way.</em></h2>
+              <p className="np-developments-intro">Search and explore the development currently featured here.</p>
             </div>
             <div className="np-search-wrap">
               <label className="np-visually-hidden" htmlFor="np-project-search">Search developments</label>
               <SearchIcon />
-              <input id="np-project-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects, tags, topics…" autoComplete="off" />
+              <input id="np-project-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search developments…" autoComplete="off" />
               {query && <button type="button" className="np-search-clear" onClick={() => setQuery("")} aria-label="Clear search">×</button>}
               <span className="np-search-count">{filtered.length} <span className="np-visually-hidden">matching </span>{filtered.length === 1 ? "project" : "projects"}</span>
             </div>
           </div>
           <p className="np-visually-hidden" aria-live="polite">Showing {filtered.length} of {DEVELOPMENTS.length} developments.</p>
           {filtered.length > 0 ? <div className="np-project-grid">{filtered.map(project => <ProjectCard key={project.name} project={project} />)}</div> : (
-            <div className="np-search-empty"><span aria-hidden="true">⌕</span><h3>No matches just yet</h3><p>Try another keyword, such as “chat”, “Android”, or “Lua”.</p><button type="button" onClick={() => setQuery("")}>Show all developments</button></div>
+            <div className="np-search-empty"><span aria-hidden="true">⌕</span><h3>No matches just yet</h3><p>Try searching for Cloud Phone, Android, or browser.</p><button type="button" onClick={() => setQuery("")}>Show all developments</button></div>
           )}
         </section>
       </main>
@@ -162,7 +190,7 @@ export default function PublicHome() {
       <footer className="np-home-footer">
         <a className="np-home-footer-brand" href="/home">Nish <b>Productions</b></a>
         <span>Built with curiosity by <b>nishgamerr</b>.</span>
-        <a href="https://github.com/Nish12345678910111" target="_blank" rel="noopener noreferrer">Find me on GitHub <span aria-hidden="true">↗</span></a>
+        <nav className="np-home-footer-links" aria-label="Footer navigation"><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a></nav>
       </footer>
     </div>
   );

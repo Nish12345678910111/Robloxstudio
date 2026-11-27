@@ -14,15 +14,39 @@ const cloudflareShell = read("../cloudflare-pages/index.html");
 const cloudflareMiddleware = read("../functions/_middleware.js");
 const cloudphoneLayout = read("../app/cloudphone/layout.js");
 const vercelRobots = read("../app/robots.js");
+const legalPage = read("../cloudflare-pages/src/shared/LegalRoute.jsx");
+const vercelTerms = read("../app/terms/page.js");
+const vercelPrivacy = read("../app/privacy/page.js");
+const pageSources = [home, cloudflareRoutes, login, dashboard, phoneRoute, legalPage, vercelTerms, vercelPrivacy].join("\n");
 
-test("public home lists verified developments and supports live search", () => {
+test("public home lists only Cloud Phone, supports search, and has no GitHub links", () => {
   assert.match(home, /name: "Nish Cloud Phone"/);
-  assert.match(home, /name: "Modern Chat"/);
-  assert.match(home, /name: "Lua Script Library"/);
+  assert.doesNotMatch(home, /Modern Chat|Lua Script Library|github\.com|GitHub|source:/i);
+  assert.equal((home.match(/name: "/g) || []).length, 1);
   assert.match(home, /type="search"/);
   assert.match(home, /DEVELOPMENTS\.filter\(project/);
   assert.match(home, /project\.href/);
   assert.match(home, /\/cloudphone\/signup/);
+});
+
+test("site menu opens and closes accessibly with policy links", () => {
+  assert.match(home, /aria-expanded=\{menuOpen\}/);
+  assert.match(home, /aria-controls="np-site-menu"/);
+  assert.match(home, /aria-modal="true"/);
+  assert.match(home, /event\.key === "Escape"/);
+  assert.match(home, /document\.body\.style\.overflow = "hidden"/);
+  assert.match(home, /href="\/terms"/);
+  assert.match(home, /href="\/privacy"/);
+  assert.doesNotMatch(home, /np-home-nav-cta/);
+});
+
+test("Terms of Service and Privacy Policy route on Cloudflare and Vercel", () => {
+  assert.match(cloudflareRoutes, /path === "\/terms"\) return <LegalRoute \/>/);
+  assert.match(cloudflareRoutes, /path === "\/privacy"\) return <LegalRoute privacy \/>/);
+  assert.match(legalPage, /privacy \? "Privacy Policy" : "Terms of Service"/);
+  assert.match(vercelTerms, /<LegalRoute \/>/);
+  assert.match(vercelPrivacy, /<LegalRoute privacy \/>/);
+  assert.doesNotMatch(pageSources, /https?:\/\/(?:www\.)?github\.(?:com|io)|href=["'][^"']*(?:\/repos\/|repository)/i);
 });
 
 test("site root leads to /home on Cloudflare Pages and Vercel", () => {
