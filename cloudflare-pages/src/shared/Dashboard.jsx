@@ -245,7 +245,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
         <span>Database: {health.db ? "🟢 connected" : `🔴 not connected${health.dbCode ? ` (${health.dbCode})` : ""}`}</span>
         {(health.keys || []).filter(key => key.configured).map(key => <span key={key.name}>{key.name}: {key.ok ? (key.active ? "🟢 active" : "🟢 working") : `🔴 unavailable${key.status ? ` (HTTP ${key.status})` : ""}`}</span>)}
       </div>}
-      <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
+      <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 active phones at once.</p>
     </aside>
     <main className="wrap">
     <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Choose Android 11 or Android 15 · x86_64 / ARM64</p></div>
