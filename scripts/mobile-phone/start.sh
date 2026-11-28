@@ -62,7 +62,7 @@ if [ "$EDITION" = "android15-arm64" ]; then
   CVD_MODE=1
   mkdir -p "$CVD_DIR"
   RUN_IDENTITY="${GITHUB_RUN_ID:-${PHONE_ID:-$(date +%s)-$$}}"
-  CVD_GROUP="nishcloudphone-$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
+  CVD_GROUP="nishcloudphone$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
   export PATH="$CVD_DIR/host/usr/bin:$PATH"
 fi
 # Viewer password (name kept for compatibility with the workflow env).
