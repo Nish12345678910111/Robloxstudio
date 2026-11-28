@@ -117,7 +117,7 @@ export async function onRequestPost({ request, env }) {
 
   const requestBody = await request.json().catch(() => ({}));
   // Every newly created cloud phone is ARM64, including requests from older clients.
-  const edition = "android15-arm64";
+  const edition = String(requestBody.edition || "android15-arm64");
   if (!PHONE_EDITIONS.has(edition)) return json({ error: "Unsupported Android edition." }, 400);
 
   const now = Date.now();
