@@ -236,15 +236,15 @@ if [ "$CVD_MODE" = "1" ]; then
       sudo usermod -aG "$group" "$USER" || true
     fi
   done
-  if [ ! -x "$CVD_DIR/host/usr/bin/adb" ] || [ ! -d "$CVD_DIR/product" ]; then
+  if [ ! -x "$CVD_DIR/host/usr/bin/adb" ] || [ ! -s "$CVD_DIR/fetcher_config.json" ]; then
     rm -rf "$CVD_DIR"
     mkdir -p "$CVD_DIR"
     cvd fetch --default_build="$CVD_BUILD" --target_directory="$CVD_DIR" \
       >>"$CVD_LOG" 2>&1 \
       || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
   fi
-  if [ ! -x "$CVD_DIR/host/usr/bin/adb" ] || [ ! -d "$CVD_DIR/product" ]; then
-    echo "Cuttlefish image fetch completed without its host tools and product images." >&2
+  if [ ! -x "$CVD_DIR/host/usr/bin/adb" ] || [ ! -s "$CVD_DIR/fetcher_config.json" ]; then
+    echo "Cuttlefish fetch completed without its host tools or fetcher manifest." >&2
     tail -n 80 "$CVD_LOG" >&2 || true
     exit 1
   fi
