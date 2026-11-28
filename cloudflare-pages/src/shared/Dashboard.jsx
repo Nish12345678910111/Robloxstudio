@@ -7,7 +7,7 @@ async function embedUrl(p) {
     return p.viewerUrl + "?t=" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""); }
   catch { return p.viewerUrl; }
 }
-function PhoneCard({ p, user, onStop, onDelete, onToast }) {
+function PhoneCard({ p, user, onStop, onDelete, onToast, deleting = false }) {
   const [frameUrl, setFrameUrl] = useState(null);
   const tok = frameUrl && frameUrl.includes("?t=") ? frameUrl.split("?t=")[1] : null;
   useEffect(() => { let on = true; embedUrl(p).then(u => { if (on) setFrameUrl(u); }); return () => { on = false; }; }, [p.viewerUrl, p.password]);
@@ -97,7 +97,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
         {live ? <button type="button" title="Download the latest Android crash trace after reproducing the problem" onClick={downloadCrashLog}>📄 Crash log</button> : null}
         {live ? <label className="apkBtn">⬆ Install APK<input type="file" accept=".apk,application/vnd.android.package-archive" hidden onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; onToast?.("ok", "Installing " + f.name + " ..."); try { const r = await fetch(p.viewerUrl + "/install-apk?t=" + (tok || ""), { method: "POST", body: f }); const j = await r.json().catch(() => ({})); onToast?.(j.ok ? "ok" : "warn", j.message || "Install finished."); } catch { onToast?.("warn", "Could not reach the phone to install."); } }} /></label> : null}
         {(p.status === "in_progress" || p.status === "queued") && <button className="stop" onClick={() => onStop(p.runId)}>⏹ Stop Cloud Phone</button>}
-        <button className="del" onClick={() => onDelete(p)}>🗑 Delete Cloud Phone</button>
+        <button className="del" disabled={deleting} onClick={() => onDelete(p)}>{deleting ? "⌛ Deleting…" : "🗑 Delete Cloud Phone"}</button>
       </span>
     </footer>
   </section>);
@@ -120,21 +120,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     if (t && t !== noticeRef.current) pushToast("warn", t);
     noticeRef.current = t || null;
   }, [pushToast]);
-  // Hide a card optimistically only for the current page session. Persisting
-  // hidden IDs across reloads could conceal undeleted database rows and make
-  // the dashboard count disagree with the server-side five-phone quota.
-  const [hidden, setHidden] = useState(() => {
-    try { localStorage.removeItem("ncp_hidden"); } catch {}
-    return new Set();
-  });
-  const setPhoneHidden = (p, isHidden) => setHidden(h => {
-    const n = new Set(h);
-    for (const id of [p.phoneId, p.runId]) {
-      if (id == null) continue;
-      if (isHidden) n.add(String(id)); else n.delete(String(id));
-    }
-    return n;
-  });
+  const [deletingPhones, setDeletingPhones] = useState(() => new Set());
   const load = useCallback(async () => {
     const r = await fetch("/api/phones", { cache: "no-store" }).catch(() => null);
     if (!r) { setNotice("Many users are using free cloud phones, try again later."); return; }
@@ -186,25 +172,37 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
   }
   async function del(p) {
     if (!confirm(`Delete Cloud Phone ${p.phoneId}? A running phone will be stopped first.`)) return;
-    // ALWAYS go through the server - even with no run id yet - so the
-    // workflow run is deleted too, not just hidden from this screen.
     const key = p.runId || p.phoneId;
-    setPhones(ps => ps.filter(x => String(x.runId) !== String(p.runId) && x.phoneId !== p.phoneId));
-    setPhoneHidden(p, true);
-    const restorePhone = () => setPhoneHidden(p, false);
-    // Keep asking the server until the phone is really gone (a running
-    // phone must finish stopping first).
+    const deletingId = String(p.phoneId || key);
+    if (deletingPhones.has(deletingId)) return;
+    setDeletingPhones(current => new Set(current).add(deletingId));
+    // Keep the card visible until the server confirms deletion. Hiding it
+    // optimistically made the dashboard show 1 phone while hidden workflows
+    // were still running and consuming the five-phone quota.
     setMsg(`Deleting ${p.phoneId}… stopping it first, this can take ~30s.`);
-    for (let i = 0; i < 40; i++) {
-      try {
-        const r = await fetch(`/api/phones/${encodeURIComponent(key)}/delete`, { method: "DELETE" });
-        const d = await r.json();
-        if (d.deleted) { setMsg("Cloud phone deleted."); load(); return; }
-        if (!r.ok && r.status !== 202) { restorePhone(); setNotice(d.error || "Many users are using free cloud phones, try again later."); load(); return; }
-      } catch {}
-      await new Promise(res => setTimeout(res, 4000));
+    try {
+      for (let i = 0; i < 40; i++) {
+        try {
+          const r = await fetch(`/api/phones/${encodeURIComponent(key)}/delete`, { method: "DELETE" });
+          const d = await r.json();
+          if (d.deleted) { setMsg("Cloud phone deleted."); await load(); return; }
+          if (!r.ok && r.status !== 202) {
+            setNotice(d.error || "Many users are using free cloud phones, try again later.");
+            await load();
+            return;
+          }
+        } catch {}
+        await new Promise(res => setTimeout(res, 4000));
+      }
+      setMsg("Delete is taking long - the phone remains listed until the server confirms it has stopped.");
+      await load();
+    } finally {
+      setDeletingPhones(current => {
+        const next = new Set(current);
+        next.delete(deletingId);
+        return next;
+      });
     }
-    restorePhone(); setMsg("Delete is taking long - try again in a moment if the phone is still listed."); load();
   }
   async function logout() { await fetch("/api/logout", { method: "POST" }); location.reload(); }
   const [view, setView] = useState("mine");
@@ -218,7 +216,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     if (r?.ok && d.ok) location.href = "/cloudphone/login";
     else alert(d.error || "Could not delete account. Please try again.");
   }
-  const visibleAll = phones.filter(p => !hidden.has(String(p.runId)) && !hidden.has(String(p.phoneId)));
+  const visibleAll = phones;
   const visible = user.role === "admin" && view === "all" ? visibleAll : visibleAll.filter(p => p.owner === user.username);
   const liveCount = visible.filter(p => p.status === "in_progress" || p.status === "running").length;
   return (<div className="shell">
@@ -260,7 +258,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     <div className="toasts">{toasts.map(t => <div key={t.id} className={"toast " + t.kind} onClick={() => setToasts(ts => ts.filter(x => x.id !== t.id))}>{t.kind === "warn" ? "⚠️ " : ""}{t.text}</div>)}</div>
     <div className="stats"><div><b>{visible.length}</b><span>total phones</span></div><div><b>{liveCount}</b><span>running now</span></div><div><b>4 CPU · 12 GB</b><span>per phone (max)</span></div><div><b>~6 h</b><span>max session</span></div></div>
     {visible.length === 0 ? <p className="empty">No phones yet. Hit <b>＋ New Cloud Phone</b> — each click starts a separate cloud phone, so you can run many phones at once. When one initializes, its live screen appears right inside its phone box.</p>
-      : <div className="grid">{visible.map(p => <PhoneCard key={p.phoneId || p.runId} p={p} user={user} onStop={stop} onDelete={del} onToast={pushToast} />)}</div>}
+      : <div className="grid">{visible.map(p => <PhoneCard key={p.phoneId || p.runId} p={p} user={user} onStop={stop} onDelete={del} onToast={pushToast} deleting={deletingPhones.has(String(p.phoneId || p.runId))} />)}</div>}
     <button className="fab" onClick={create} disabled={creating || !tokenReady} title="New Cloud Phone">{creating ? "…" : "＋"}</button>
     </main></div>);
 }
