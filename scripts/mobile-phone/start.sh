@@ -52,7 +52,7 @@ cd "$WORKDIR_PHONE"
 # the dashboard's APK-install action. Cuttlefish mode skips SDK creation and
 # puts its host-tools directory on PATH before the viewer starts; phase 2 fills it.
 SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-# Self-hosted ARM64 Cuttlefish runners do not need an Android SDK install.
+# ARM64 Cuttlefish runners do not need an Android SDK install.
 # Avoid creating the workflow's /usr/local SDK path there; it may be root-owned.
 if [ "$EDITION" != "android15-arm64" ]; then
   mkdir -p "$SDK_EARLY"
