@@ -156,7 +156,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     const i = setInterval(() => { if (!document.hidden) load(); }, active ? 6000 : 20000); return () => clearInterval(i); }, [load, phones]);
   async function create() {
     if (creating) return;
-    const edition = "android15-arm64";
+    const edition = phoneEdition;
     setCreating(true); setMsg("");
     const r = await fetch("/api/phones", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edition }),
@@ -228,10 +228,10 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
         {user.role === "admin" && <button className={view === "all" ? "nav on" : "nav"} onClick={() => setView("all")}>🌍 Everyone's Cloud Phones</button>}
       </nav>
       <label className="editionPicker"><span>Android image</span>
-        <select value={phoneEdition} onChange={() => setPhoneEdition("android15-arm64")}>
+        <select value={phoneEdition} onChange={e => setPhoneEdition(e.target.value)}>
           <option value="android11">Android 11 (recommended)</option>
           <option value="android15">Android 15 x86_64 (compatibility test)</option>
-          <option value="android15-arm64">Android 15 ARM64 (KVM)</option>
+          <option value="android15-arm64">Android 15 ARM64 (QEMU software)</option>
         </select>
       </label>
       <aside className="safetyNotice" role="note" aria-label="Account safety">
@@ -248,7 +248,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
     </aside>
     <main className="wrap">
-    <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 default · Android 15 x86_64 or ARM64 KVM profile</p></div>
+    <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Choose Android 11 or Android 15 · x86_64 / ARM64</p></div>
       </header>
     {adSlot}
     {!tokenReady && <p className="warn">⏳ Cloud phones are busy right now — Many users are using free cloud phones, try again later.</p>}
