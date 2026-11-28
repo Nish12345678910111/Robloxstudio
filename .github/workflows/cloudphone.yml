@@ -32,7 +32,7 @@ on:
         type: choice
         options: ["android11", "android15", "android15-arm64"]
       preflight_only:
-        description: "Only verify an ARM64 runner's architecture, KVM, memory, and CPU"
+        description: "Only verify the ARM64 runner architecture, memory, and CPU"
         required: false
         default: false
         type: boolean
