@@ -152,7 +152,7 @@ jobs:
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
             .phone-vm/cuttlefish
-          key: cloud-phone-runtime-v11-${{ inputs.edition }}
+          key: cloud-phone-runtime-v12-${{ inputs.edition }}
 
       - name: Start Cloud Phone
         if: ${{ !inputs.preflight_only }}
@@ -217,7 +217,7 @@ jobs:
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
             .phone-vm/cuttlefish
-          key: cloud-phone-runtime-v11-${{ inputs.edition }}
+          key: cloud-phone-runtime-v12-${{ inputs.edition }}
 
       - name: Keep phone alive (until session ends or run is cancelled)
         if: ${{ !inputs.preflight_only }}
