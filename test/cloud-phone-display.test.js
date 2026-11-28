@@ -33,12 +33,12 @@ test("selected phone RAM, CPU, and disk settings reach both runtime engines", ()
 
 test("ARM64 selects a native Cuttlefish build on a KVM-capable runner", () => {
   assert.match(workflowScript, /default: "android11"[\s\S]*options: \["android11", "android15", "android15-arm64"\]/);
-  assert.match(workflowScript, /inputs\.edition == 'android15-arm64' && fromJSON\('\["self-hosted", "linux", "ARM64", "kvm"\]'\) \|\| 'ubuntu-latest'/);
+  assert.match(workflowScript, /inputs\.edition == 'android15-arm64' && 'ubuntu-24\.04-arm' \|\| 'ubuntu-latest'/);
+  assert.doesNotMatch(workflowScript, /self-hosted.*ARM64.*kvm/i);
   assert.match(workflowScript, /Verify ARM64 KVM runner/);
   assert.match(workflowScript, /\[ -c \/dev\/kvm \]/);
   assert.match(workflowScript, /MEMORY_MB[\s\S]*-ge 15000/);
   assert.match(workflowScript, /CPU_COUNT[\s\S]*-ge 4/);
-  assert.match(workflowScript, /self-hosted.*linux.*ARM64.*kvm/);
 
   const preflightIndex = workflowScript.indexOf("- name: Verify ARM64 KVM runner");
   const screenServiceIndex = workflowScript.indexOf("- name: Start screen service");
