@@ -1,6 +1,7 @@
 const OWNER = env => env.GITHUB_OWNER || "Nish12345678910111";
 const REPO = env => env.GITHUB_REPO || "Robloxstudio";
-const WORKFLOW = env => env.GITHUB_WORKFLOW || "cloud-phone.yml";
+const WORKFLOW = env => env.GITHUB_WORKFLOW || "cloud-phone-new-arm64.yml";
+export const cloudPhoneWorkflowEnv = env => ({ ...env, GITHUB_WORKFLOW: "cloud-phone-new-arm64.yml" });
 const BASE = env => `${env.GITHUB_API_BASE || "https://api.github.com"}/repos/${OWNER(env)}/${REPO(env)}`;
 
 export function apiSlots(env) {
