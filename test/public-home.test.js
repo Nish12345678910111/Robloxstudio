@@ -50,9 +50,16 @@ test("public home is a deployments directory with direct Cloud Phone access and 
 test("home page uses layered motion without burdening mobile or reduced-motion users", () => {
   assert.match(home, /<CloudPhonePreview \/>/);
   assert.match(home, /className="np-deploy-preview" aria-hidden="true"/);
-  assert.match(homeStyles, /\.np-deploy-window \{[^}]*animation: np-panel-float 8s ease-in-out infinite/);
-  assert.match(homeStyles, /animation: np-ring-orbit 42s linear infinite/);
-  assert.match(homeStyles, /animation-name: np-ring-orbit-reverse; animation-duration: 56s/);
+  assert.match(homeStyles, /\.np-deploy-window \{[^}]*animation: np-panel-float 6\.8s ease-in-out infinite/);
+  assert.match(homeStyles, /animation: np-ring-orbit 30s linear infinite, np-ring-glow 4\.2s/);
+  assert.match(homeStyles, /animation: np-ring-orbit-reverse 38s linear infinite, np-ring-glow/);
+  assert.match(homeStyles, /\.np-home::before,\.np-home::after \{/);
+  assert.match(homeStyles, /animation: np-grid-breathe 18s ease-in-out infinite alternate, np-grid-slide 30s linear infinite/);
+  assert.match(homeStyles, /\.np-header-cta::before[^}]*animation: np-button-sweep/);
+  assert.match(homeStyles, /animation: np-gradient-flow 5\.2s ease-in-out infinite/);
+  assert.match(homeStyles, /\.np-deploy-window::after[^}]*animation: np-window-scan/);
+  assert.match(homeStyles, /\.np-deploy-row[^}]*animation: np-rise-in \.55s both, np-row-shimmer/);
+  assert.match(homeStyles, /\.np-project-card\.is-featured[^}]*animation: np-rise-in \.55s backwards, np-card-glow/);
   assert.match(homeStyles, /\.np-hero-copy > \.np-eyebrow \{ animation: np-rise-in/);
   assert.match(homeStyles, /\.np-proof-strip > div:nth-child\(3\) \{ animation-delay: \.52s; \}/);
   assert.match(homeStyles, /\.np-deploy-float-one[^}]*animation: np-float-soft/);
@@ -65,8 +72,12 @@ test("home page uses layered motion without burdening mobile or reduced-motion u
   assert.match(homeStyles, /\.np-project-grid \{ display: grid; grid-template-columns: minmax\(0, 560px\); justify-content: center;/);
   assert.match(homeStyles, /\.np-project-grid \{ grid-template-columns: 1fr; gap: 11px;/);
   assert.match(homeStyles, /\.np-home-grid,\.np-deploy-halo,\.np-deploy-preview::before,\.np-deploy-preview::after,\.np-deploy-window,\.np-deploy-float,\.np-deploy-spark/);
+  assert.match(homeStyles, /\.np-home-grid \{ opacity: \.2; animation: np-grid-breathe-mobile 26s/);
+  assert.match(homeStyles, /\.np-deploy-window \{ transform: none; animation: np-panel-float-flat 9s/);
+  assert.match(homeStyles, /\.np-button-primary \{ animation-duration: 5\.2s; \}/);
   assert.match(homeStyles, /animation: none;/);
   assert.match(homeStyles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(homeStyles, /\.np-home,\.np-home::before,\.np-home::after/);
   assert.match(homeStyles, /\.np-home \*, \.np-home \*::before, \.np-home \*::after/);
   assert.match(homeStyles, /animation: none !important;/);
   assert.match(homeStyles, /transition: none !important;/);
