@@ -1,8 +1,8 @@
 import PublicHome from "../../cloudflare-pages/src/shared/PublicHome.jsx";
 
 export const metadata = {
-  title: "Nish Productions — Projects & Deployments",
-  description: "Explore Nish Productions: Cloud Phone, Modern Chat, Lua scripts, and their Cloudflare Pages, Vercel, and GitHub Pages deployments.",
+  title: "Nish Cloud Phone — Android in your browser | Nish Productions",
+  description: "Launch and manage a private cloud Android session from your browser with Nish Cloud Phone on Cloudflare Pages.",
 };
 
 export default function PublicHomePage() {
