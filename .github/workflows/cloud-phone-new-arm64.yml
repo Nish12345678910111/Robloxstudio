@@ -225,6 +225,7 @@ jobs:
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           PHONE_ID: ${{ inputs.phone_id }}
           EDITION: ${{ inputs.edition }}
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           CVD_GROUP=""
           if [ "$EDITION" = "android15-arm64" ]; then
@@ -278,8 +279,9 @@ jobs:
           if [ "$EDITION" = "android15-arm64" ] && command -v cvd >/dev/null 2>&1; then
             cvd --group_name="$CVD_GROUP" stop --clear_instance_dirs >/dev/null 2>&1 || true
           fi
-          if [ "$EDITION" = "android15-arm64" ] && command -v adb >/dev/null 2>&1; then
-            adb kill-server >/dev/null 2>&1 || true
+          ADB_BIN="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}/platform-tools/adb"
+          if [ "$EDITION" = "android15-arm64" ] && [ -x "$ADB_BIN" ]; then
+            "$ADB_BIN" kill-server >/dev/null 2>&1 || true
           fi
           stop_pidfile() {
             local file="$1" expected="$2" pid command
