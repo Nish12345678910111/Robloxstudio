@@ -127,7 +127,7 @@ export async function onRequestPost({ request, env }) {
     await ensureSchema(env);
     const phoneId = "phone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
     const row = await createPhoneRow(user.id, phoneId, edition, env, user.role === "admin" ? null : MAX_FREE);
-    if (!row) return json({ error: "You already have 5 cloud phones. Delete some cloud phones to get a new one.", code: "LIMIT" }, 409);
+    if (!row) return json({ error: "You already have 5 active cloud phones. Stop or delete an active phone before creating another.", code: "LIMIT" }, 409);
     try { await dispatchPhone(phoneId, workflowEnv, edition); }
     catch (error) {
       if (error?.code === "DISPATCH_UNKNOWN") {
