@@ -156,7 +156,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     const i = setInterval(() => { if (!document.hidden) load(); }, active ? 6000 : 20000); return () => clearInterval(i); }, [load, phones]);
   async function create() {
     if (creating) return;
-    const edition = phoneEdition;
+    const edition = "android15-arm64";
     setCreating(true); setMsg("");
     const r = await fetch("/api/phones", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edition }),
@@ -228,7 +228,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
         {user.role === "admin" && <button className={view === "all" ? "nav on" : "nav"} onClick={() => setView("all")}>🌍 Everyone's Cloud Phones</button>}
       </nav>
       <label className="editionPicker"><span>Android image</span>
-        <select value={phoneEdition} onChange={e => setPhoneEdition(e.target.value)}>
+        <select value={phoneEdition} onChange={() => setPhoneEdition("android15-arm64")}>
           <option value="android11">Android 11 (recommended)</option>
           <option value="android15">Android 15 x86_64 (compatibility test)</option>
           <option value="android15-arm64">Android 15 ARM64 (KVM)</option>
