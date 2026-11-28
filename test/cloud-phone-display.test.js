@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dispatchPhone } from "../functions/_lib/github.js";
 
 const startScript = readFileSync(new URL("../scripts/mobile-phone/start.sh", import.meta.url), "utf8");
 const workflowScript = readFileSync(new URL("../.github/workflows/cloud-phone.yml", import.meta.url), "utf8");
@@ -8,6 +9,7 @@ const viewerScript = readFileSync(new URL("../scripts/mobile-phone/viewer.py", i
 const githubScript = readFileSync(new URL("../functions/_lib/github.js", import.meta.url), "utf8");
 const phonesApiScript = readFileSync(new URL("../functions/api/phones.js", import.meta.url), "utf8");
 const dashboardScript = readFileSync(new URL("../cloudflare-pages/src/shared/Dashboard.jsx", import.meta.url), "utf8");
+const phoneRouteScript = readFileSync(new URL("../cloudflare-pages/src/shared/PhoneRoute.jsx", import.meta.url), "utf8");
 
 test("cloud phone mirrors a headless emulator without host dialogs or emulator controls", () => {
   assert.match(startScript, /emulator" -avd phone -no-window/);
@@ -25,54 +27,46 @@ test("the selected cloud-phone RAM, CPU and disk values reach the emulator", () 
   assert.doesNotMatch(startScript, /-memory 4096 -cores 4/);
 });
 
-test("Android 15 profiles are opt-in and Android 11 stays the default", () => {
-  assert.match(workflowScript, /default: "android11"[\s\S]*options: \["android11", "android15", "android15-arm64"\]/);
+test("only the supported Android 11 and Android 15 x86_64 profiles can start phones", () => {
+  assert.match(workflowScript, /default: "android11"[\s\S]*options: \["android11", "android15"\]/);
+  assert.match(workflowScript, /runs-on: ubuntu-latest/);
+  assert.doesNotMatch(workflowScript, /ubuntu-24\.04-arm|options:.*android15-arm64/);
   assert.match(startScript, /android11\) ANDROID_API_LEVEL=30; ANDROID_VERSION=11; ANDROID_ABI=x86_64/);
   assert.match(startScript, /android15\) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=x86_64/);
-  assert.match(startScript, /android15-arm64\) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=arm64-v8a/);
   assert.match(startScript, /PHONE_SYSTEM_IMAGE="system-images;android-\$\{ANDROID_API_LEVEL\};google_apis;\$\{ANDROID_ABI\}"/);
-  assert.match(startScript, /IMG_PKG="\$PHONE_SYSTEM_IMAGE"/);
-  assert.match(startScript, /x86_64:x86_64\|arm64-v8a:aarch64\|arm64-v8a:arm64/);
-  assert.match(workflowScript, /runs-on: \$\{\{ inputs\.edition == 'android15-arm64' && 'ubuntu-24\.04-arm'/);
+  assert.match(startScript, /x86_64:x86_64/);
+  assert.match(startScript, /\$SDK\/emulator\/emulator" -accel-check/);
+  assert.match(workflowScript, /sudo modprobe kvm/);
   assert.match(workflowScript, /cloudflared-bin-v2-\$\{\{ runner\.arch \}\}/);
-  assert.match(startScript, /SCREEN_START_TIMEOUT=960/);
-  assert.match(startScript, /BOOT_WAIT_ATTEMPTS=180/);
-  assert.match(startScript, /SDKMANAGER_LOG="\$WORKDIR_PHONE\/sdkmanager\.log"/);
-  assert.match(workflowScript, /Report safe Android startup diagnostics/);
+  assert.match(startScript, /SCREEN_START_TIMEOUT=180/);
+  assert.match(startScript, /BOOT_WAIT_ATTEMPTS=120/);
   assert.match(workflowScript, /cloud-phone-runtime-v8-\$\{\{ inputs\.edition \}\}/);
-  assert.match(workflowScript, /\.phone-vm\/cuttlefish/);
   assert.match(workflowScript, /PHASE: "1"\s+EDITION: \$\{\{ inputs\.edition \}\}/);
-  assert.match(phonesApiScript, /PHONE_EDITIONS = new Set\(\["android11", "android15", "android15-arm64"\]\)/);
-  assert.match(phonesApiScript, /dispatchPhone\(phoneId, env, edition\)/);
-  assert.match(githubScript, /"android15-arm64" \? edition/);
-  assert.match(dashboardScript, /Android 15 ARM64 guest \(Cuttlefish ARM64 runner\)/);
+  assert.match(phonesApiScript, /PHONE_EDITIONS = new Set\(\["android11", "android15"\]\)/);
+
+  const dispatchStart = githubScript.indexOf("export async function dispatchPhone");
+  const dispatchEnd = githubScript.indexOf("export async function cancelRun", dispatchStart);
+  const dispatchBody = githubScript.slice(dispatchStart, dispatchEnd);
+  assert.match(dispatchBody, /\["android11", "android15"\]\.includes\(edition\)/);
+  assert.doesNotMatch(dispatchBody, /android15-arm64/);
+  assert.doesNotMatch(startScript, /android15-arm64|Cuttlefish|arm64-v8a/);
+  assert.doesNotMatch(dashboardScript, /value="android15-arm64"/);
 });
 
-test("ARM64 KVM is loaded and preflighted before publishing the phone viewer", () => {
-  const accelerationStart = workflowScript.indexOf("- name: Enable hardware acceleration");
-  const screenServiceStart = workflowScript.indexOf("- name: Start screen service");
-  const accelerationStep = workflowScript.slice(accelerationStart, screenServiceStart);
-  assert.ok(accelerationStart >= 0 && screenServiceStart > accelerationStart);
-  assert.match(accelerationStep, /sudo modprobe kvm/);
-  assert.match(accelerationStep, /ARM64 Cuttlefish KVM preflight: READY/);
-  assert.match(accelerationStep, /\[ ! -c \/dev\/kvm \] \|\| \[ ! -r \/dev\/kvm \] \|\| \[ ! -w \/dev\/kvm \]/);
-
-  const scriptPreflight = startScript.indexOf("Validate virtualization before starting the public viewer/tunnel.");
-  const liveSection = startScript.indexOf("# ------------------------------------------------------ live FIRST");
-  assert.ok(scriptPreflight >= 0 && liveSection > scriptPreflight);
-  assert.match(startScript, /\[ "\$EDITION" = "android15-arm64" \] && \[ "\$\{PHASE:-2\}" != "1" \]/);
-  assert.match(startScript, /\[ ! -c \/dev\/kvm \] \|\| \[ ! -r \/dev\/kvm \] \|\| \[ ! -w \/dev\/kvm \]/);
+test("ARM64 run requests are blocked clearly while old runs remain identifiable", () => {
+  assert.match(phonesApiScript, /Android 15 ARM64 is paused because hosted ARM64 runners do not provide usable KVM/);
+  assert.match(dashboardScript, /Android 15 ARM64 is paused until a KVM-capable runner is available/);
+  assert.match(dashboardScript, /Android 15 ARM64 · unsupported legacy run/);
+  assert.match(phoneRouteScript, /Android 15 ARM64 · unsupported legacy run/);
+  assert.match(githubScript, /\["android15", "android15-arm64"\]\.includes\(run\.inputs\?\.edition\)/);
 });
 
-test("the ARM64 pilot uses the matching Cuttlefish phone image and ADB endpoint", () => {
-  assert.match(startScript, /PHONE_SYSTEM_IMAGE="Cuttlefish android15-qpr2-release\/aosp_cf_arm64_only_phone-userdebug"/);
-  assert.match(startScript, /The ARM64 Cuttlefish profile requires an ARM64 host/);
-  assert.match(startScript, /The ARM64 Cuttlefish profile requires writable \/dev\/kvm/);
-  assert.match(startScript, /apt_get install -y -qq cuttlefish-base cuttlefish-user/);
-  assert.match(startScript, /cvd fetch --default_build=android15-qpr2-release\/aosp_cf_arm64_only_phone-userdebug/);
-  assert.match(startScript, /cvd create --host_path="\$CVD_DIR" --product_path="\$CVD_DIR"/);
-  assert.match(startScript, /SERIAL="localhost:6520"/);
-  assert.match(startScript, /adb connect "\$SERIAL"/);
+test("workflow dispatch refuses the paused ARM64 profile before GitHub access", async () => {
+  await assert.rejects(dispatchPhone("phone-test", {}, "android15-arm64"), error => {
+    assert.equal(error.code, "UNSUPPORTED_EDITION");
+    assert.equal(error.message, "Unsupported Android edition.");
+    return true;
+  });
 });
 
 test("soft keyboard is configured before emulator launch and VNC accepts mapped keys", () => {

@@ -1,6 +1,6 @@
 # Nish Productions
 
-The public home for Nishgamerr's web tools, experiments, and projects. Visit `/home` for the searchable developments page. Cloud Phone account and dashboard pages live under `/cloudphone`.
+The public home for Nishgamerr's web tools, experiments, and projects. Visit `/home` to explore the featured projects and learn about Cloud Phone. Cloud Phone account and dashboard pages live under `/cloudphone`.
 
 ## ☁️📱 NishCloudPhone
 
@@ -50,6 +50,6 @@ Vercel uses `vercel.json` and `npm run vercel:build`. It hosts the shared API ha
 
 ## Cloud Phone display and input
 
-The default Android 11 and opt-in Android 15 x86_64 profiles run Android Emulator headlessly and mirror only the device display with scrcpy into Xvfb. The opt-in Android 15 ARM64 profile experiments with Cuttlefish on a hosted ARM64 runner. All profiles use the official noVNC client over x11vnc/websockify for viewing and input; emulator host dialogs and controls are kept out of the mirrored display. On-screen keyboard support and noVNC keyboard/clipboard input are enabled.
+The default Android 11 and opt-in Android 15 x86_64 profiles run Android Emulator headlessly and mirror only the device display with scrcpy into Xvfb. Android 15 ARM64 is paused because hosted ARM64 runners have not provided usable KVM. Both supported profiles use the official noVNC client over x11vnc/websockify for viewing and input; emulator host dialogs and controls are kept out of the mirrored display. On-screen keyboard support and noVNC keyboard/clipboard input are enabled.
 
-Phone starts still need a GitHub-hosted runner to boot and initialize Android. The SDK/runtime cache reduces repeat startup work after its first successful preparation, but a cold runner cannot start literally instantly. The ARM64 Cuttlefish profile remains experimental.
+Phone starts still need a GitHub-hosted runner to boot and initialize Android. The SDK/runtime cache reduces repeat startup work after its first successful preparation, but a cold runner cannot start literally instantly.

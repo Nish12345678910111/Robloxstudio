@@ -1,8 +1,8 @@
 name: Cloud Phone
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
-# Android 11/15 x86_64 use the Linux x86_64 runner. The optional Android 15
-# ARM64 guest uses a Linux ARM64 runner so its system image matches the host.
+# Android 11 and Android 15 x86_64 use the supported Linux x86_64 runner.
+# Android 15 ARM64 is paused until a KVM-capable ARM64 runner is available.
 # The phone's URL/password are stored only in the owner's account database row
 # (via AIVEN_DATABASE_URL); they are never printed, uploaded, or committed.
 #
@@ -20,11 +20,11 @@ on:
         default: "manual"
         type: string
       edition:
-        description: "Android edition (ARM64 guest uses a hosted ARM64 runner; experimental)"
+        description: "Android edition (x86_64 hosted runner)"
         required: true
         default: "android11"
         type: choice
-        options: ["android11", "android15", "android15-arm64"]
+        options: ["android11", "android15"]
       session_minutes:
         description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
@@ -59,37 +59,33 @@ permissions:
 jobs:
   cloud-phone:
     name: Cloud Phone
-    runs-on: ${{ inputs.edition == 'android15-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Enable hardware acceleration
-        env:
-          EDITION: ${{ inputs.edition }}
+      - name: Prepare Android emulator acceleration
         run: |
-          # The hosted ARM64 image may have KVM compiled as a loadable module.
-          # Load it before triggering udev so /dev/kvm exists before phone setup.
-          sudo modprobe kvm || echo "KVM module could not be loaded; checking for a runner-provided device."
+          HOST_ARCH="$(uname -m)"
+          sudo modprobe kvm || true
+          if [ "$HOST_ARCH" = "x86_64" ]; then
+            if grep -q GenuineIntel /proc/cpuinfo; then sudo modprobe kvm_intel || true; fi
+            if grep -q AuthenticAMD /proc/cpuinfo; then sudo modprobe kvm_amd || true; fi
+          fi
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
           sudo udevadm control --reload-rules || true
           sudo udevadm trigger --name-match=kvm || true
           sudo udevadm settle --timeout=10 || true
           if [ -c /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
+          echo "Host architecture: $HOST_ARCH"
           if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-            echo "Acceleration: READY"
+            echo "KVM acceleration: available"
           else
-            echo "Acceleration: unavailable"
+            echo "KVM acceleration: unavailable; the Android Emulator will try its software fallback."
           fi
-          echo "Host architecture: $(uname -m)"
           if [ -e /dev/kvm ]; then ls -l /dev/kvm; else echo "KVM device: missing"; fi
-          if [ "$EDITION" = "android15-arm64" ] && { [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; }; then
-            echo "::error::Android 15 ARM64 needs a readable and writable /dev/kvm on this ARM64 runner. Enable KVM or use a KVM-capable ARM64 runner." >&2
-            exit 1
-          fi
-          if [ "$EDITION" = "android15-arm64" ]; then echo "ARM64 Cuttlefish KVM preflight: READY"; fi
           nproc; free -h
 
       - name: Cache cloudflared binary
@@ -125,7 +121,7 @@ jobs:
           PHONE_ID: ${{ inputs.phone_id }}
           PHASE: "1"
           EDITION: ${{ inputs.edition }}
-          ANDROID_SDK_ROOT: ${{ inputs.edition == 'android15-arm64' && format('{0}/.phone-vm/sdk', github.workspace) || '/usr/local/lib/android/sdk' }}
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
         run: |
           chmod +x scripts/mobile-phone/start.sh
@@ -143,7 +139,6 @@ jobs:
             .phone-vm/sdk/system-images
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
-            .phone-vm/cuttlefish
           key: cloud-phone-runtime-v8-${{ inputs.edition }}
 
       - name: Start Cloud Phone
@@ -157,7 +152,7 @@ jobs:
           DISK_GB: ${{ inputs.disk_gb }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           EDITION: ${{ inputs.edition }}
-          ANDROID_SDK_ROOT: ${{ inputs.edition == 'android15-arm64' && format('{0}/.phone-vm/sdk', github.workspace) || '/usr/local/lib/android/sdk' }}
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
         run: |
           chmod +x scripts/mobile-phone/start.sh
@@ -207,7 +202,6 @@ jobs:
             .phone-vm/sdk/system-images
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
-            .phone-vm/cuttlefish
           key: cloud-phone-runtime-v8-${{ inputs.edition }}
 
       - name: Keep phone alive (until session ends or run is cancelled)

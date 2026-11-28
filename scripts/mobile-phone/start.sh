@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  NishCloudPhone - Android 11/15 x86_64 plus an ARM64 guest experiment.
+#  NishCloudPhone - Android 11/15 x86_64 cloud phones.
 #  scrcpy renders only the Android display into Xvfb; official noVNC serves
 #  that clean screen and forwards keyboard/clipboard input to the phone.
 #  The password-gated noVNC proxy + tunnel + Url/Password go live FIRST.
@@ -18,32 +18,13 @@ EDITION="${EDITION:-android11}"
 case "$EDITION" in
   android11) ANDROID_API_LEVEL=30; ANDROID_VERSION=11; ANDROID_ABI=x86_64 ;;
   android15) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=x86_64 ;;
-  android15-arm64) ANDROID_API_LEVEL=35; ANDROID_VERSION=15; ANDROID_ABI=arm64-v8a ;;
   *) echo "Unsupported Android edition: $EDITION" >&2; exit 2 ;;
 esac
 echo ">>> Android $ANDROID_VERSION compatibility profile: $EDITION ($ANDROID_ABI)"
-if [ "$EDITION" = "android15-arm64" ]; then
-  PHONE_SYSTEM_IMAGE="Cuttlefish android15-qpr2-release/aosp_cf_arm64_only_phone-userdebug"
-else
-  PHONE_SYSTEM_IMAGE="system-images;android-${ANDROID_API_LEVEL};google_apis;${ANDROID_ABI}"
-fi
+PHONE_SYSTEM_IMAGE="system-images;android-${ANDROID_API_LEVEL};google_apis;${ANDROID_ABI}"
 export PHONE_PROFILE_EDITION="$EDITION" PHONE_PROFILE_API="$ANDROID_API_LEVEL"
 export PHONE_PROFILE_ABI="$ANDROID_ABI" PHONE_PROFILE_HOST_ARCH="$(uname -m)"
 export PHONE_PROFILE_IMAGE="$PHONE_SYSTEM_IMAGE"
-# Validate virtualization before starting the public viewer/tunnel. The workflow
-# also prepares KVM, but this guard keeps direct phase-2 starts from publishing
-# a phone that cannot boot.
-if [ "$EDITION" = "android15-arm64" ] && [ "${PHASE:-2}" != "1" ]; then
-  HOST_ARCH="$(uname -m)"
-  if [ "$HOST_ARCH" != "aarch64" ] && [ "$HOST_ARCH" != "arm64" ]; then
-    echo "The ARM64 Cuttlefish profile requires an ARM64 host; found $HOST_ARCH." >&2
-    exit 1
-  fi
-  if [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
-    echo "The ARM64 Cuttlefish profile requires writable /dev/kvm (and read access) on the ARM64 host." >&2
-    exit 1
-  fi
-fi
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$WORKDIR_PHONE"
@@ -58,12 +39,6 @@ cd "$WORKDIR_PHONE"
 SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 mkdir -p "$SDK_EARLY"
 export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
-CVD_DIR="$WORKDIR_PHONE/cuttlefish"
-if [ "$EDITION" = "android15-arm64" ]; then
-  mkdir -p "$CVD_DIR"
-  export PATH="$CVD_DIR/host/usr/bin:$PATH"
-fi
-
 # Viewer password (name kept for compatibility with the workflow env).
 # Workflow steps share no env, so phase 1 persists it in the runner workspace
 # for phase 2; it is never printed, uploaded, or committed.
@@ -77,7 +52,6 @@ fi
 printf %s "$VNC_PASSWORD" > "$PW_FILE"
 export VNC_PASSWORD
 SERIAL="emulator-5554"
-if [ "$EDITION" = "android15-arm64" ]; then SERIAL="localhost:6520"; fi
 NOVNC_PACKAGES=(xvfb x11vnc novnc websockify scrcpy libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libgl1 libegl1 libpulse0 xdotool)
 NOVNC_INSTALL_LOG="$WORKDIR_PHONE/novnc-install.log"
 NOVNC_INSTALL_PID="$WORKDIR_PHONE/novnc-install.pid"
@@ -212,99 +186,63 @@ if [ "${PHASE:-}" = "1" ]; then echo "Screen service live."; exit 0; fi
 
 # ------------------------------------------------------ Android runtime setup ------
 echo ">>> Starting Android $ANDROID_VERSION phone..."
-CVD_MODE=0
-if [ "$EDITION" = "android15-arm64" ]; then
-  CVD_MODE=1
-  CVD_LOG="$WORKDIR_PHONE/cuttlefish.log"
-  : > "$CVD_LOG"
-  if ! command -v cvd >/dev/null 2>&1; then
-    sudo curl -fsSL https://us-apt.pkg.dev/doc/repo-signing-key.gpg \
-      -o /etc/apt/trusted.gpg.d/artifact-registry.asc
-    sudo chmod a+r /etc/apt/trusted.gpg.d/artifact-registry.asc
-    echo "deb https://us-apt.pkg.dev/projects/android-cuttlefish-artifacts android-cuttlefish main" \
-      | sudo tee /etc/apt/sources.list.d/cuttlefish.list >/dev/null
-    apt_get update -qq >>"$CVD_LOG" 2>&1
-    apt_get install -y -qq cuttlefish-base cuttlefish-user >>"$CVD_LOG" 2>&1 \
-      || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
-    sudo usermod -aG kvm,cvdnetwork,render "$USER"
+# Fast path: CI runners ship Java + Android SDK preinstalled - use them and
+# skip every big download. Only fall back to a private SDK when missing.
+SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+if [ -z "$SDK" ] || [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+  SDK="$WORKDIR_PHONE/sdk"
+  if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+    curl -fsSL --retry 5 -o /tmp/cmdtools.zip \
+      https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+    rm -rf "$SDK/cmdline-tools"; mkdir -p "$SDK/cmdline-tools"
+    unzip -q -o /tmp/cmdtools.zip -d "$SDK/cmdline-tools"
+    mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
   fi
-  mkdir -p "$CVD_DIR"
-  if [ ! -d "$CVD_DIR/host" ] || [ ! -d "$CVD_DIR/product" ]; then
-    cvd fetch --default_build=android15-qpr2-release/aosp_cf_arm64_only_phone-userdebug \
-      --target_directory="$CVD_DIR" >>"$CVD_LOG" 2>&1 \
-      || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
-  fi
-  if [ ! -d "$CVD_DIR/host" ] || [ ! -d "$CVD_DIR/product" ]; then
-    echo "Cuttlefish image fetch completed without the expected host/product directories." >&2
-    tail -n 80 "$CVD_LOG" >&2 || true
-    exit 1
-  fi
-  export PATH="$CVD_DIR/host/usr/bin:$PATH"
-  command -v adb >/dev/null 2>&1 || {
-    echo "Cuttlefish host tools did not provide adb." >&2
-    tail -n 80 "$CVD_LOG" >&2 || true
-    exit 1
-  }
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "sdk_cache_ready=true" >> "$GITHUB_OUTPUT"; fi
-else
-  # Fast path: CI runners ship Java + Android SDK preinstalled - use them and
-  # skip every big download. Only fall back to a private SDK when missing.
-  SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-  if [ -z "$SDK" ] || [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
-    SDK="$WORKDIR_PHONE/sdk"
-    if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
-      curl -fsSL --retry 5 -o /tmp/cmdtools.zip \
-        https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-      rm -rf "$SDK/cmdline-tools"; mkdir -p "$SDK/cmdline-tools"
-      unzip -q -o /tmp/cmdtools.zip -d "$SDK/cmdline-tools"
-      mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
-    fi
-  fi
-  AVD_HOME_DIR="$WORKDIR_PHONE/avd"; mkdir -p "$AVD_HOME_DIR"
-  export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
-  export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
-  IMG_PKG="$PHONE_SYSTEM_IMAGE"
-  IMG_DIR="$SDK/system-images/android-${ANDROID_API_LEVEL}/google_apis/${ANDROID_ABI}"
-  SDKMANAGER_LOG="$WORKDIR_PHONE/sdkmanager.log"
-  : > "$SDKMANAGER_LOG"
-  # Keep details in the workspace so a failed SDK package fetch can be diagnosed.
-  if [ ! -x "$SDK/emulator/emulator" ] || [ ! -s "$IMG_DIR/system.img" ]; then
-    yes | sdkmanager --licenses >>"$SDKMANAGER_LOG" 2>&1 || true
-    if [ ! -x "$SDK/emulator/emulator" ]; then
-      sdkmanager "emulator" "platform-tools" >>"$SDKMANAGER_LOG" 2>&1 \
-        || { tail -n 100 "$SDKMANAGER_LOG" >&2; exit 1; }
-    fi
-    if [ ! -s "$IMG_DIR/system.img" ]; then
-      sdkmanager "$IMG_PKG" >>"$SDKMANAGER_LOG" 2>&1 \
-        || { tail -n 100 "$SDKMANAGER_LOG" >&2; exit 1; }
-    fi
-  fi
-  if [ -x "$SDK/emulator/emulator" ] && [ -s "$IMG_DIR/system.img" ] \
-     && [ -n "${GITHUB_OUTPUT:-}" ]; then
-    echo "sdk_cache_ready=true" >> "$GITHUB_OUTPUT"
-  fi
-  if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
-    echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
-      || echo no | avdmanager create avd -n phone -k "$IMG_PKG" --force >/dev/null
-  fi
-  CFG="$AVD_HOME_DIR/phone.avd/config.ini"
-  set_avd_config() {
-    local key="$1" value="$2"
-    if grep -q "^${key}=" "$CFG"; then
-      sed -i "s|^${key}=.*|${key}=${value}|" "$CFG"
-    else
-      printf '%s=%s\n' "$key" "$value" >> "$CFG"
-    fi
-  }
-  # Configure the guest before the emulator reads config.ini.
-  set_avd_config hw.ramSize "${RAM_MB}M"
-  set_avd_config disk.dataPartition.size "${DISK_GB}G"
-  set_avd_config hw.lcd.width 432
-  set_avd_config hw.lcd.height 768
-  set_avd_config hw.lcd.density 200
-  set_avd_config hw.cpu.ncore "$CPU_CORES"
-  set_avd_config hw.keyboard no
 fi
+AVD_HOME_DIR="$WORKDIR_PHONE/avd"; mkdir -p "$AVD_HOME_DIR"
+export ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" ANDROID_AVD_HOME="$AVD_HOME_DIR"
+export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$SDK/emulator:$PATH"
+IMG_PKG="$PHONE_SYSTEM_IMAGE"
+IMG_DIR="$SDK/system-images/android-${ANDROID_API_LEVEL}/google_apis/${ANDROID_ABI}"
+SDKMANAGER_LOG="$WORKDIR_PHONE/sdkmanager.log"
+: > "$SDKMANAGER_LOG"
+# Keep details in the workspace so a failed SDK package fetch can be diagnosed.
+if [ ! -x "$SDK/emulator/emulator" ] || [ ! -s "$IMG_DIR/system.img" ]; then
+  yes | sdkmanager --licenses >>"$SDKMANAGER_LOG" 2>&1 || true
+  if [ ! -x "$SDK/emulator/emulator" ]; then
+    sdkmanager "emulator" "platform-tools" >>"$SDKMANAGER_LOG" 2>&1 \
+      || { tail -n 100 "$SDKMANAGER_LOG" >&2; exit 1; }
+  fi
+  if [ ! -s "$IMG_DIR/system.img" ]; then
+    sdkmanager "$IMG_PKG" >>"$SDKMANAGER_LOG" 2>&1 \
+      || { tail -n 100 "$SDKMANAGER_LOG" >&2; exit 1; }
+  fi
+fi
+if [ -x "$SDK/emulator/emulator" ] && [ -s "$IMG_DIR/system.img" ] \
+   && [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "sdk_cache_ready=true" >> "$GITHUB_OUTPUT"
+fi
+if [ ! -d "$AVD_HOME_DIR/phone.avd" ]; then
+  echo no | avdmanager create avd -n phone -k "$IMG_PKG" -d pixel_5 --force >/dev/null 2>&1 \
+    || echo no | avdmanager create avd -n phone -k "$IMG_PKG" --force >/dev/null
+fi
+CFG="$AVD_HOME_DIR/phone.avd/config.ini"
+set_avd_config() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$CFG"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$CFG"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$CFG"
+  fi
+}
+# Configure the guest before the emulator reads config.ini.
+set_avd_config hw.ramSize "${RAM_MB}M"
+set_avd_config disk.dataPartition.size "${DISK_GB}G"
+set_avd_config hw.lcd.width 432
+set_avd_config hw.lcd.height 768
+set_avd_config hw.lcd.density 200
+set_avd_config hw.cpu.ncore "$CPU_CORES"
+set_avd_config hw.keyboard no
 # Both screen URLs require the official noVNC stack. Wait for phase 1's
 # installer to finish completely, even if its first package files appeared;
 # never launch a second apt-get while the first process may own dpkg's lock.
@@ -353,51 +291,30 @@ fi
 HOST_ARCH="$(uname -m)"
 BOOT_WAIT_ATTEMPTS=120
 SCREEN_START_TIMEOUT=180
-if [ "$CVD_MODE" = "1" ]; then
-  BOOT_WAIT_ATTEMPTS=180
-  SCREEN_START_TIMEOUT=960
-  launch_android_runtime() {
-    nohup cvd create --host_path="$CVD_DIR" --product_path="$CVD_DIR" \
-      > "$CVD_LOG" 2>&1 &
-    echo $! > "$WORKDIR_PHONE/cvd.pid"
-  }
-  emu_alive() {
-    if cvd status >/dev/null 2>&1; then return 0; fi
-    [ -f "$WORKDIR_PHONE/cvd.pid" ] && kill -0 "$(cat "$WORKDIR_PHONE/cvd.pid")" 2>/dev/null
-  }
-  launch_android_runtime
-  sleep 10
-  if ! emu_alive; then
-    echo "Cuttlefish did not start; refusing to report a live phone." >&2
-    tail -n 100 "$CVD_LOG" 2>/dev/null || true
-    exit 1
-  fi
-else
-  ACCEL="off"
-  # Use KVM only when the guest and runner use the same CPU architecture.
-  case "$ANDROID_ABI:$HOST_ARCH" in
-    x86_64:x86_64|arm64-v8a:aarch64|arm64-v8a:arm64)
-      if [ -w /dev/kvm ]; then ACCEL="on"; fi ;;
-  esac
-  launch_android_runtime() {
-    # Keep emulator controls out of the screen; scrcpy mirrors the guest only.
-    nohup "$SDK/emulator/emulator" -avd phone -no-window -no-audio -no-boot-anim \
-      -gpu swiftshader_indirect -accel "$1" -memory "$RAM_MB" -cores "$CPU_CORES" \
-      -partition-size "$((DISK_GB * 1024))" -port 5554 -no-snapshot -wipe-data \
-      -netdelay none -netspeed full -camera-back none -camera-front none -no-metrics \
-      > emulator.log 2>&1 &
-    echo $! > emulator.pid
-  }
-  emu_alive() { [ -f emulator.pid ] && kill -0 "$(cat emulator.pid)" 2>/dev/null; }
-  launch_android_runtime "$ACCEL"; sleep 12
-  if ! emu_alive && [ "$ACCEL" = "on" ]; then
-    ACCEL="off"; launch_android_runtime off; sleep 12
-  fi
-  if ! emu_alive; then
-    echo "Headless Android Emulator failed; refusing to start a phone without a screen mirror." >&2
-    tail -n 60 emulator.log 2>/dev/null || true
-    exit 1
-  fi
+ACCEL="off"
+# Use KVM only when the guest and runner use the same CPU architecture.
+case "$ANDROID_ABI:$HOST_ARCH" in
+  x86_64:x86_64)
+    if [ -w /dev/kvm ] && "$SDK/emulator/emulator" -accel-check >/dev/null 2>&1; then ACCEL="on"; fi ;;
+esac
+launch_android_runtime() {
+  # Keep emulator controls out of the screen; scrcpy mirrors the guest only.
+  nohup "$SDK/emulator/emulator" -avd phone -no-window -no-audio -no-boot-anim \
+    -gpu swiftshader_indirect -accel "$1" -memory "$RAM_MB" -cores "$CPU_CORES" \
+    -partition-size "$((DISK_GB * 1024))" -port 5554 -no-snapshot -wipe-data \
+    -netdelay none -netspeed full -camera-back none -camera-front none -no-metrics \
+    > emulator.log 2>&1 &
+  echo $! > emulator.pid
+}
+emu_alive() { [ -f emulator.pid ] && kill -0 "$(cat emulator.pid)" 2>/dev/null; }
+launch_android_runtime "$ACCEL"; sleep 12
+if ! emu_alive && [ "$ACCEL" = "on" ]; then
+  ACCEL="off"; launch_android_runtime off; sleep 12
+fi
+if ! emu_alive; then
+  echo "Headless Android Emulator failed; refusing to start a phone without a screen mirror." >&2
+  tail -n 60 emulator.log 2>/dev/null || true
+  exit 1
 fi
 echo "$(date -u +%H:%M:%S) vnc_stack=$USE_VNC android_runtime_alive=yes" >> supervisor.log 2>/dev/null || true
 
@@ -440,7 +357,6 @@ elif [ -z "$NOVNC_URL" ]; then
 fi
 
 adb start-server >/dev/null 2>&1 || true
-if [ "$CVD_MODE" = "1" ]; then adb connect "$SERIAL" >>"$CVD_LOG" 2>&1 || true; fi
 (
   BOOTED=0
   for _ in $(seq 1 "$BOOT_WAIT_ATTEMPTS"); do
