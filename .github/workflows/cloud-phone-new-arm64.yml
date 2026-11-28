@@ -278,8 +278,8 @@ jobs:
           if [ "$EDITION" = "android15-arm64" ] && command -v cvd >/dev/null 2>&1; then
             cvd --group_name="$CVD_GROUP" stop --clear_instance_dirs >/dev/null 2>&1 || true
           fi
-          if [ "$EDITION" = "android15-arm64" ] && [ -x "$PHONE_WORKDIR/cuttlefish/host/usr/bin/adb" ]; then
-            "$PHONE_WORKDIR/cuttlefish/host/usr/bin/adb" kill-server >/dev/null 2>&1 || true
+          if [ "$EDITION" = "android15-arm64" ] && command -v adb >/dev/null 2>&1; then
+            adb kill-server >/dev/null 2>&1 || true
           fi
           stop_pidfile() {
             local file="$1" expected="$2" pid command
