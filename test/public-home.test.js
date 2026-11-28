@@ -47,19 +47,29 @@ test("public home is a deployments directory with direct Cloud Phone access and 
   assert.doesNotMatch(legalPage, /GitHub|Cloudflare|Vercel|pages\.dev/i);
 });
 
-test("deployment showcase animates, adapts to mobile, and respects reduced motion", () => {
+test("home page uses layered motion without burdening mobile or reduced-motion users", () => {
   assert.match(home, /<CloudPhonePreview \/>/);
   assert.match(home, /className="np-deploy-preview" aria-hidden="true"/);
   assert.match(homeStyles, /\.np-deploy-window \{[^}]*animation: np-panel-float 8s ease-in-out infinite/);
   assert.match(homeStyles, /animation: np-ring-orbit 42s linear infinite/);
   assert.match(homeStyles, /animation-name: np-ring-orbit-reverse; animation-duration: 56s/);
+  assert.match(homeStyles, /\.np-hero-copy > \.np-eyebrow \{ animation: np-rise-in/);
+  assert.match(homeStyles, /\.np-proof-strip > div:nth-child\(3\) \{ animation-delay: \.52s; \}/);
+  assert.match(homeStyles, /\.np-deploy-float-one[^}]*animation: np-float-soft/);
+  assert.match(homeStyles, /\.np-deploy-spark-one[^}]*animation: np-sparkle/);
+  assert.match(homeStyles, /\.np-scroll-cue span[^}]*animation: np-scroll-bob/);
+  assert.match(homeStyles, /\.np-nav-drawer\.is-open \.np-drawer-nav a \{ animation: np-drawer-item/);
+  assert.match(homeStyles, /\.np-project-card:hover::before/);
+  assert.match(homeStyles, /\.np-header-nav a:hover::after/);
   assert.match(homeStyles, /@media \(max-width: 620px\)/);
   assert.match(homeStyles, /\.np-project-grid \{ display: grid; grid-template-columns: minmax\(0, 560px\); justify-content: center;/);
   assert.match(homeStyles, /\.np-project-grid \{ grid-template-columns: 1fr; gap: 11px;/);
-  assert.match(homeStyles, /@media \(max-width: 620px\) \{\s+\.np-home-grid,\.np-deploy-halo,\.np-deploy-preview::before,\.np-deploy-preview::after,\.np-deploy-window,\.np-deploy-state i \{ animation: none; \}/);
+  assert.match(homeStyles, /\.np-home-grid,\.np-deploy-halo,\.np-deploy-preview::before,\.np-deploy-preview::after,\.np-deploy-window,\.np-deploy-float,\.np-deploy-spark/);
+  assert.match(homeStyles, /animation: none;/);
   assert.match(homeStyles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(homeStyles, /\.np-home \*, \.np-home \*::before, \.np-home \*::after/);
-  assert.match(homeStyles, /\.np-home-grid,\.np-deploy-halo,\.np-deploy-window,\.np-deploy-preview::before,\.np-deploy-preview::after,\.np-deploy-row,\.np-deploy-row:nth-child\(n\),\.np-deploy-state i \{ animation: none !important; \}/);
+  assert.match(homeStyles, /animation: none !important;/);
+  assert.match(homeStyles, /transition: none !important;/);
   assert.doesNotMatch(homeStyles, /will-change\s*:/);
 });
 
