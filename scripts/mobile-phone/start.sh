@@ -244,6 +244,12 @@ if [ "$CVD_MODE" = "1" ]; then
       >>"$CVD_LOG" 2>&1 \
       || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
   fi
+  if [ ! -s "$CVD_DIR/fetcher_config.json" ]; then
+    echo "Cuttlefish fetch reported success but did not create fetcher_config.json." >&2
+    find "$CVD_DIR" -maxdepth 2 -type f -printf '%P\\n' 2>/dev/null | head -n 80 >&2 || true
+    tail -n 80 "$CVD_LOG" >&2 || true
+    exit 1
+  fi
   CVD_ADB="$(command -v adb || true)"
   if [ -z "$CVD_ADB" ]; then
     CVD_ADB="$(find "$CVD_DIR" -type f -name adb -perm /111 -print -quit 2>/dev/null || true)"
