@@ -354,6 +354,7 @@ jobs:
           GITHUB_REPO: ${{ github.event.repository.name }}
         run: |
           node --input-type=module <<'NODE'
+          import { Client } from "pg";
           import { ensureSchema, listPhoneRows, deletePhoneRow } from "./functions/_lib/db.js";
           import { findRunsByPhoneIds, getRunStatus, deleteRun } from "./functions/_lib/github.js";
 
@@ -365,6 +366,38 @@ jobs:
           };
           if (!baseEnv.AIVEN_DATABASE_URL || !baseEnv.GITHUB_TOKEN) {
             throw new Error("Database cleaning requires AIVEN_DATABASE_URL and GITHUB_TOKEN.");
+          }
+
+          // Fail closed when the database is already under connection pressure.
+          // Read numbackends for this database, then ALWAYS close the probe connection
+          // before deciding whether any cleanup work may proceed.
+          const databaseUrl = new URL(baseEnv.AIVEN_DATABASE_URL);
+          const sslMode = databaseUrl.searchParams.get("sslmode");
+          if (sslMode) databaseUrl.searchParams.delete("sslmode");
+          const probe = new Client({
+            connectionString: databaseUrl.toString(),
+            ...(sslMode && sslMode !== "disable"
+              ? { ssl: { rejectUnauthorized: !["require", "prefer", "allow"].includes(sslMode) } }
+              : {})
+          });
+          let activeConnections;
+          try {
+            await probe.connect();
+            const { rows } = await probe.query(
+              "SELECT numbackends::int AS connections FROM pg_stat_database WHERE datname = current_database()"
+            );
+            if (!rows.length || !Number.isInteger(rows[0].connections)) {
+              throw new Error("Could not reliably read the database connection count; cleanup aborted.");
+            }
+            activeConnections = rows[0].connections;
+          } finally {
+            await probe.end().catch(() => {});
+          }
+
+          console.log(`Database connection check: ${activeConnections} active connection(s); cleanup limit is 15.`);
+          if (activeConnections > 15) {
+            console.log("Database is under high connection load (>15). Skipping ALL cleanup; probe connection has been disconnected.");
+            process.exit(0);
           }
 
           const workflowNames = ["cloud-phone.yml", "cloudphone.yml"];
