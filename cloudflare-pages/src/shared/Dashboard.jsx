@@ -234,6 +234,10 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
           <option value="android15-arm64">Android 15 ARM64 (KVM)</option>
         </select>
       </label>
+      <aside className="safetyNotice" role="note" aria-label="Account safety">
+        <b>Account safety</b>
+        <span>Use official Roblox apps only. Emulator support can vary; executors, cheats, exploit tools, and modified clients may break app rules and risk a ban. We cannot bypass third-party enforcement.</span>
+      </aside>
       <button className="primary wide" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button>
       <button className="ghost wide" onClick={logout}>Log out</button>
       <button className="danger wide" onClick={delAccount}>🗑 Delete my account</button>

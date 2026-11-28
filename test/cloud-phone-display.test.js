@@ -89,6 +89,13 @@ test("ARM64 selects a native Cuttlefish build on a self-hosted runner with verif
   assert.doesNotMatch([workflowScript, phonesApiScript, dashboardScript, phoneRouteScript].join("\n"), /Android 15 ARM64 is paused|unsupported legacy run/i);
 });
 
+test("dashboard warns that executors and modified clients risk third-party bans", () => {
+  assert.match(dashboardScript, /className="safetyNotice" role="note" aria-label="Account safety"/);
+  assert.match(dashboardScript, /executors, cheats, exploit tools, and modified clients/);
+  assert.match(dashboardScript, /risk a ban/);
+  assert.match(dashboardScript, /cannot bypass third-party enforcement/);
+});
+
 test("ARM64 dispatch includes the selected Android 15 ARM64 edition", async () => {
   const originalFetch = globalThis.fetch;
   let request;
