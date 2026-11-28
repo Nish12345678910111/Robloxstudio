@@ -1,6 +1,6 @@
 # Nish Productions
 
-The public home for Nishgamerr's web tools, experiments, and projects. Visit `/home` to explore the featured projects and learn about Cloud Phone. Cloud Phone account and dashboard pages live under `/cloudphone`.
+The public home for Nishgamerr's web tools, experiments, and projects. Visit `/home` to browse featured projects and their Cloudflare Pages, Vercel, and GitHub Pages deployments. Cloud Phone account and dashboard pages live under `/cloudphone`.
 
 ## ☁️📱 NishCloudPhone
 
