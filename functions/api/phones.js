@@ -1,6 +1,6 @@
 import { getUser, tokenConfigured } from "../_lib/auth.js";
 import { createPhoneRow, dbConfigured, deletePhoneRow, ensureSchema, linkRun, listPhoneRows, setPhoneStatus } from "../_lib/db.js";
-import { cancelRun, deleteRun, dispatchPhone, findRunsByPhoneIds, getRunStatus, listPhones } from "../_lib/github.js";
+import { cancelRun, cloudPhoneWorkflowEnv, deleteRun, dispatchPhone, findRunsByPhoneIds, getRunStatus, listPhones } from "../_lib/github.js";
 import { clientIp, json, sameOrigin } from "../_lib/http.js";
 import { VPN_MSG, vpnBlocked } from "../_lib/netguard.js";
 import { reconcilePhoneRuns } from "../_lib/phone-ownership.js";
@@ -14,6 +14,7 @@ const storedStatus = status => status === "running" ? "in_progress"
     : ["starting", "queued", "in_progress", "completed", "deleting", "busy"].includes(status) ? status : "starting";
 
 export async function onRequestGet({ request, env }) {
+  const workflowEnv = cloudPhoneWorkflowEnv(env);
   const user = await getUser(request, env);
   if (!user) return json({ error: "unauthorized" }, 401);
   if (await vpnBlocked(clientIp(request))) return json({ error: VPN_MSG, vpn: true, phones: [], totalPhones: 0 }, 403);
@@ -29,10 +30,10 @@ export async function onRequestGet({ request, env }) {
 
   let live = [], liveOk = true;
   if (tokenConfigured(env)) {
-    try { live = await listPhones(false, env); }
+    try { live = await listPhones(false, workflowEnv); }
     catch {
       await new Promise(resolve => setTimeout(resolve, 600));
-      try { live = await listPhones(true, env); } catch { liveOk = false; }
+      try { live = await listPhones(true, workflowEnv); } catch { liveOk = false; }
     }
   }
   let reconciliation = reconcilePhoneRuns(rows, live);
@@ -41,7 +42,7 @@ export async function onRequestGet({ request, env }) {
     const oldRows = rows.filter(row => Date.now() - new Date(row.created_at).getTime() >= 24 * 3600 * 1000).slice(0, 5);
     let runsByPhone = new Map(), scanOk = !oldRows.length;
     if (tokenConfigured(env) && oldRows.length) {
-      try { runsByPhone = await findRunsByPhoneIds(oldRows.map(row => row.phone_id), env); scanOk = true; }
+      try { runsByPhone = await findRunsByPhoneIds(oldRows.map(row => row.phone_id), workflowEnv); scanOk = true; }
       catch { scanOk = false; }
     }
     const rowRuns = matchesByPhoneId();
@@ -61,13 +62,13 @@ export async function onRequestGet({ request, env }) {
       checked++;
       let allGone = true;
       for (const runId of runIds) {
-        const status = await getRunStatus(runId, env).catch(() => "unknown");
+        const status = await getRunStatus(runId, workflowEnv).catch(() => "unknown");
         if (status === null) continue;
         if (status !== "completed") { allGone = false; break; }
-        await deleteRun(runId, env).catch(() => null);
+        await deleteRun(runId, workflowEnv).catch(() => null);
         // A 204 only acknowledges deletion; retain the row until GitHub
         // confirms every run for this phone is actually gone.
-        if (await getRunStatus(runId, env).catch(() => "unknown") !== null) { allGone = false; break; }
+        if (await getRunStatus(runId, workflowEnv).catch(() => "unknown") !== null) { allGone = false; break; }
       }
       if (!allGone) continue;
       await deletePhoneRow(row.phone_id, env).catch(() => {});
@@ -106,6 +107,7 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
+  const workflowEnv = cloudPhoneWorkflowEnv(env);
   if (!sameOrigin(request)) return json({ error: "Request blocked." }, 403);
   const user = await getUser(request, env);
   if (!user) return json({ error: "unauthorized" }, 401);
@@ -126,7 +128,7 @@ export async function onRequestPost({ request, env }) {
     const phoneId = "phone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
     const row = await createPhoneRow(user.id, phoneId, edition, env, user.role === "admin" ? null : MAX_FREE);
     if (!row) return json({ error: "You already have 5 cloud phones. Delete some cloud phones to get a new one.", code: "LIMIT" }, 409);
-    try { await dispatchPhone(phoneId, env, edition); }
+    try { await dispatchPhone(phoneId, workflowEnv, edition); }
     catch (error) {
       if (error?.code === "DISPATCH_UNKNOWN") {
         // The request may have reached GitHub before its response was lost.
