@@ -251,8 +251,20 @@ if [ "$CVD_MODE" = "1" ]; then
   if [ -z "$CVD_ADB" ] && [ -x "$SDK_EARLY/platform-tools/adb" ]; then
     CVD_ADB="$SDK_EARLY/platform-tools/adb"
   fi
+  # Last-resort platform-tools install: keep it under .phone-vm/sdk so the
+  # existing Android runtime cache preserves it across cloud-phone sessions.
   if [ -z "$CVD_ADB" ]; then
-    echo "Android adb was not found in PATH, the SDK platform-tools directory, or the fetched Cuttlefish files." >&2
+    mkdir -p "$WORKDIR_PHONE/sdk"
+    ADB_ZIP="$WORKDIR_PHONE/sdk/platform-tools-latest-linux.zip"
+    echo "adb is not preinstalled; downloading Google's official platform-tools..."
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+      -o "$ADB_ZIP" https://dl.google.com/android/repository/platform-tools-latest-linux.zip \
+      || { echo "Could not download Android platform-tools." >&2; exit 1; }
+    unzip -q -o "$ADB_ZIP" -d "$WORKDIR_PHONE/sdk"
+    CVD_ADB="$WORKDIR_PHONE/sdk/platform-tools/adb"
+  fi
+  if [ -z "$CVD_ADB" ] || [ ! -x "$CVD_ADB" ]; then
+    echo "Android adb was not found in PATH, the SDK platform-tools directory, the fetched Cuttlefish files, or the fallback platform-tools install." >&2
     echo "SDK platform-tools: $SDK_EARLY/platform-tools" >&2
     echo "Cuttlefish manifest present: $([ -s "$CVD_DIR/fetcher_config.json" ] && echo yes || echo no)" >&2
     find "$CVD_DIR" -maxdepth 3 -type f -name adb -print >&2 2>/dev/null || true
