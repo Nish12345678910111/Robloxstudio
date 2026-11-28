@@ -252,7 +252,7 @@ if [ "$CVD_MODE" = "1" ]; then
   if [ ! -s "$CVD_DIR/fetcher_config.json" ] || [ -z "$CVD_ADB" ]; then
     echo "Cuttlefish fetch completed, but its manifest or adb host tool is missing." >&2
     echo "Fetched directory entries:" >&2
-    find "$CVD_DIR" -maxdepth 4 -type f -printf '%P\\n' 2>/dev/null | head -n 80 >&2 || true
+    find "$CVD_DIR" -maxdepth 4 -type f -printf '%P\n' 2>/dev/null | head -n 80 >&2 || true
     tail -n 80 "$CVD_LOG" >&2 || true
     exit 1
   fi
