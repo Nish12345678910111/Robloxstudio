@@ -48,16 +48,12 @@ if [ "${PHASE:-}" = "1" ] || [ "${PHASE:-}" = "2" ]; then
   rm -f "$SCREEN_READY_FILE"
 fi
 cd "$WORKDIR_PHONE"
-# Resolve the SDK location NOW so the viewer launched below can use adb for
-# the dashboard's APK-install action. Cuttlefish mode skips SDK creation and
-# puts its host-tools directory on PATH before the viewer starts; phase 2 fills it.
+# Resolve the SDK location NOW so both the viewer and Cuttlefish can use
+# Android's platform-tools adb. ARM64 runners already have the SDK installed;
+# do not mkdir/chown the runner-managed SDK path.
 SDK_EARLY="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-# ARM64 Cuttlefish runners do not need an Android SDK install.
-# Avoid creating the workflow's /usr/local SDK path there; it may be root-owned.
-if [ "$EDITION" != "android15-arm64" ]; then
-  mkdir -p "$SDK_EARLY"
-  export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
-fi
+if [ "$EDITION" != "android15-arm64" ]; then mkdir -p "$SDK_EARLY"; fi
+export PATH="$SDK_EARLY/platform-tools:$SDK_EARLY/emulator:$SDK_EARLY/cmdline-tools/latest/bin:$PATH"
 CVD_MODE=0
 CVD_DIR="$WORKDIR_PHONE/cuttlefish"
 CVD_LOG="$WORKDIR_PHONE/cuttlefish.log"
@@ -236,30 +232,36 @@ if [ "$CVD_MODE" = "1" ]; then
       sudo usermod -aG "$group" "$USER" || true
     fi
   done
-  # cvd fetch writes the product images directly into target_directory;
-  # there is no required "$CVD_DIR/product" child directory. Host tools may
-  # also be laid out differently between Cuttlefish package revisions, so
-  # locate adb rather than assuming one fixed subdirectory.
-  CVD_ADB="$(find "$CVD_DIR" -type f -name adb -perm /111 -print -quit 2>/dev/null || true)"
-  if [ ! -s "$CVD_DIR/fetcher_config.json" ] || [ -z "$CVD_ADB" ]; then
+  # cvd fetch writes its images and fetcher_config.json into CVD_DIR.
+  # adb is an Android SDK platform-tool, not guaranteed to be bundled inside
+  # the fetched Cuttlefish host package. Resolve it independently so a missing
+  # adb binary never causes a valid multi-GB image download to be repeated.
+  if [ ! -s "$CVD_DIR/fetcher_config.json" ]; then
+    echo "Cuttlefish fetch manifest is missing; fetching the Android build..."
     rm -rf "$CVD_DIR"
     mkdir -p "$CVD_DIR"
     cvd fetch --default_build="$CVD_BUILD" --target_directory="$CVD_DIR" \
       >>"$CVD_LOG" 2>&1 \
       || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
+  fi
+  CVD_ADB="$(command -v adb || true)"
+  if [ -z "$CVD_ADB" ]; then
     CVD_ADB="$(find "$CVD_DIR" -type f -name adb -perm /111 -print -quit 2>/dev/null || true)"
   fi
-  if [ ! -s "$CVD_DIR/fetcher_config.json" ] || [ -z "$CVD_ADB" ]; then
-    echo "Cuttlefish fetch completed, but its manifest or adb host tool is missing." >&2
-    echo "Fetched directory entries:" >&2
-    find "$CVD_DIR" -maxdepth 4 -type f -printf '%P\n' 2>/dev/null | head -n 80 >&2 || true
+  if [ -z "$CVD_ADB" ] && [ -x "$SDK_EARLY/platform-tools/adb" ]; then
+    CVD_ADB="$SDK_EARLY/platform-tools/adb"
+  fi
+  if [ -z "$CVD_ADB" ]; then
+    echo "Android adb was not found in PATH, the SDK platform-tools directory, or the fetched Cuttlefish files." >&2
+    echo "SDK platform-tools: $SDK_EARLY/platform-tools" >&2
+    echo "Cuttlefish manifest present: $([ -s "$CVD_DIR/fetcher_config.json" ] && echo yes || echo no)" >&2
+    find "$CVD_DIR" -maxdepth 3 -type f -name adb -print >&2 2>/dev/null || true
     tail -n 80 "$CVD_LOG" >&2 || true
     exit 1
   fi
   export PATH="$(dirname "$CVD_ADB"):$CVD_DIR/host/usr/bin:$PATH"
   command -v adb >/dev/null 2>&1 || {
-    echo "Cuttlefish adb host tool could not be added to PATH." >&2
-    tail -n 80 "$CVD_LOG" >&2 || true
+    echo "Resolved adb binary is not executable from PATH: $CVD_ADB" >&2
     exit 1
   }
   # Use Cuttlefish QEMU rather than the KVM-only crosvm path. QEMU falls back
