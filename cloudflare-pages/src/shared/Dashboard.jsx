@@ -74,7 +74,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
     }
   }
   return (<section className="card">
-    <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android15-arm64" ? "Android 15 ARM64 guest pilot" : p.edition === "android15" ? "Android 15 test" : "Android 11"}</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : !p.owner && user.role === "admin" && p.ownerStatus === "unavailable" ? " · owner unavailable (unlinked run)" : ""}</span></div>
+    <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android15-arm64" ? "Android 15 ARM64 · unsupported legacy run" : p.edition === "android15" ? "Android 15 x86_64" : "Android 11"}</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : !p.owner && user.role === "admin" && p.ownerStatus === "unavailable" ? " · owner unavailable (unlinked run)" : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
       <p><b>Url -</b> {p.viewerUrl ? <a href={frameUrl || p.viewerUrl} target="_blank" rel="noreferrer">{p.viewerUrl}</a> : "waiting for connection…"}</p>
@@ -168,7 +168,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
         status: d.state === "busy" ? "busy" : "starting", createdAt: new Date().toISOString(),
         viewerUrl: null, password: null }, ...ps]);
       if (d.state === "busy") setNotice("Many users are using free cloud phones, try again later.");
-      else setMsg(`✅ Android ${edition === "android15-arm64" ? "15 ARM64 guest pilot" : edition === "android15" ? "15 compatibility test" : "11"} phone created — it is starting.`);
+      else setMsg(`✅ Android ${edition === "android15" ? "15 x86_64 compatibility test" : "11"} phone created — it is starting.`);
       load();
     } else setNotice(d.error || "Many users are using free cloud phones, try again later.");
     setCreating(false);
@@ -229,10 +229,10 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
       </nav>
       <label className="editionPicker"><span>Android image</span>
         <select value={phoneEdition} onChange={e => setPhoneEdition(e.target.value)}>
-          <option value="android11">Android 11 (current)</option>
+          <option value="android11">Android 11 (recommended)</option>
           <option value="android15">Android 15 x86_64 (compatibility test)</option>
-          <option value="android15-arm64">Android 15 ARM64 guest (Cuttlefish ARM64 runner)</option>
         </select>
+        <small className="editionHint">Android 15 ARM64 is paused until a KVM-capable runner is available.</small>
       </label>
       <button className="primary wide" onClick={create} disabled={creating || !tokenReady}>{creating ? "Creating…" : "＋ New Cloud Phone"}</button>
       <button className="ghost wide" onClick={logout}>Log out</button>
@@ -244,7 +244,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
       <p className="sideNote">🔒 Your phones are private — only you can see them{user.role === "admin" ? ", except you as admin see everyone's" : ""}. Max 5 per account.</p>
     </aside>
     <main className="wrap">
-    <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 default · Android 15 x86_64 and ARM64 guest tests</p></div>
+    <header className="top"><button className="burger" onClick={() => setSideOpen(o => !o)} title="Open / close sidebar">{sideOpen ? "✕" : "☰"}</button><div><h1>{user.role === "admin" && view === "all" ? "🌍 Everyone's Cloud Phones" : "📱 My Cloud Phones"}</h1><p className="muted">Android 11 default · Android 15 x86_64 compatibility profile</p></div>
       </header>
     {adSlot}
     {!tokenReady && <p className="warn">⏳ Cloud phones are busy right now — Many users are using free cloud phones, try again later.</p>}

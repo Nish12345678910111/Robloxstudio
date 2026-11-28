@@ -84,7 +84,12 @@ async function ghOk(path, options, env) {
 }
 
 export async function dispatchPhone(phoneId, env, edition = "android11") {
-  const selectedEdition = edition === "android15" || edition === "android15-arm64" ? edition : "android11";
+  if (!["android11", "android15"].includes(edition)) {
+    const error = new Error("Unsupported Android edition.");
+    error.code = "UNSUPPORTED_EDITION";
+    throw error;
+  }
+  const selectedEdition = edition;
   const body = JSON.stringify({ ref: "main", inputs: {
     phone_id: phoneId, edition: selectedEdition, session_minutes: "340",
     ram_mb: "12288", cpu_cores: "4", disk_gb: "32",
