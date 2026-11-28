@@ -13,6 +13,71 @@ const storedStatus = status => status === "running" ? "in_progress"
   : ["stopped", "deleted"].includes(status) ? "completed"
     : ["starting", "queued", "in_progress", "completed", "deleting", "busy"].includes(status) ? status : "starting";
 
+// Reconcile stale quota rows against BOTH phone workflows before rejecting a
+// new phone. A failed Actions run is no longer an active phone, even if an
+// earlier request left its database row marked "starting".
+async function reconcileQuotaRows(rows, env) {
+  const activeRows = rows.filter(row =>
+    !row.deleted_at && ["starting", "queued", "in_progress", "running", "deleting"].includes(row.status)
+  );
+  if (!activeRows.length) return;
+  const phoneIds = activeRows.map(row => String(row.phone_id));
+  const workflowEnvs = [
+    cloudPhoneWorkflowEnv(env),
+    { ...env, GITHUB_WORKFLOW: "cloud-phone.yml" },
+  ];
+  const runsByWorkflow = [];
+  for (const workflowEnv of workflowEnvs) {
+    try {
+      runsByWorkflow.push(await findRunsByPhoneIds(phoneIds, workflowEnv));
+    } catch {
+      // Fail closed: never free a slot if GitHub history could not be checked.
+      return;
+    }
+  }
+
+  for (const row of activeRows) {
+    const found = new Map();
+    for (let i = 0; i < workflowEnvs.length; i++) {
+      for (const runId of runsByWorkflow[i].get(String(row.phone_id)) || []) {
+        found.set(String(runId), [workflowEnvs[i]]);
+      }
+    }
+    if (row.run_id && !found.has(String(row.run_id))) {
+      found.set(String(row.run_id), workflowEnvs);
+    }
+
+    if (found.size) {
+      let allFinished = true;
+      for (const [runId, candidates] of found) {
+        let resolved = false;
+        for (const workflowEnv of candidates) {
+          const status = await getRunStatus(runId, workflowEnv).catch(() => "unknown");
+          if (status === "unknown") { allFinished = false; resolved = true; break; }
+          if (status !== null && status !== "completed") { allFinished = false; resolved = true; break; }
+          if (status === "completed") { resolved = true; break; }
+          // A verified 404 means this workflow does not own this run; try the
+          // other workflow when the stored run ID has no history match.
+        }
+        if (!resolved) allFinished = false;
+        if (!allFinished) break;
+      }
+      if (allFinished) {
+        await setPhoneStatus(row.phone_id, "completed", env).catch(() => {});
+        row.status = "completed";
+      }
+      continue;
+    }
+
+    // A full scan of both workflow histories found no dispatch for this row.
+    // Allow a short dispatch propagation window before releasing the orphan.
+    if (Date.now() - new Date(row.created_at).getTime() >= 10 * 60 * 1000) {
+      await setPhoneStatus(row.phone_id, "completed", env).catch(() => {});
+      row.status = "completed";
+    }
+  }
+}
+
 export async function onRequestGet({ request, env }) {
   const workflowEnv = cloudPhoneWorkflowEnv(env);
   const user = await getUser(request, env);
@@ -35,6 +100,12 @@ export async function onRequestGet({ request, env }) {
       await new Promise(resolve => setTimeout(resolve, 600));
       try { live = await listPhones(true, workflowEnv); } catch { liveOk = false; }
     }
+  }
+  const activeRowCount = rows.filter(row =>
+    ["starting", "queued", "in_progress", "running", "deleting"].includes(row.status)
+  ).length;
+  if (activeRowCount >= MAX_FREE && liveOk && tokenConfigured(env)) {
+    await reconcileQuotaRows(rows, env);
   }
   let reconciliation = reconcilePhoneRuns(rows, live);
   const matchesByPhoneId = () => new Map(reconciliation.matched.map(({ row, run }) => [String(row.phone_id), run]));
@@ -126,7 +197,15 @@ export async function onRequestPost({ request, env }) {
   try {
     await ensureSchema(env);
     const phoneId = "phone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
-    const row = await createPhoneRow(user.id, phoneId, edition, env, user.role === "admin" ? null : MAX_FREE);
+    let row = await createPhoneRow(user.id, phoneId, edition, env, user.role === "admin" ? null : MAX_FREE);
+    if (!row && user.role !== "admin") {
+      // The transactional DB cap is authoritative. If it rejects the create,
+      // reconcile completed/failed/orphaned runs and retry once before showing
+      // the limit warning. Live or unverifiable runs continue to count.
+      const currentRows = await listPhoneRows(user, env);
+      await reconcileQuotaRows(currentRows, env);
+      row = await createPhoneRow(user.id, phoneId, edition, env, MAX_FREE);
+    }
     if (!row) return json({ error: "You already have 5 active cloud phones. Stop or delete an active phone before creating another.", code: "LIMIT" }, 409);
     try { await dispatchPhone(phoneId, workflowEnv, edition); }
     catch (error) {
