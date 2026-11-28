@@ -227,6 +227,11 @@ if [ "$CVD_MODE" = "1" ]; then
     apt_get install -y -qq cuttlefish-base cuttlefish-user >>"$CVD_LOG" 2>&1 \
       || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
   fi
+  # The cvd CLI now validates host setup before create. This command applies
+  # missing group membership fixes (with sudo) on ephemeral GitHub runners.
+  echo ">>> Configuring Cuttlefish host requirements..."
+  cvd setup >>"$CVD_LOG" 2>&1 \
+    || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
   for group in kvm cvdnetwork render; do
     if getent group "$group" >/dev/null 2>&1; then
       sudo usermod -aG "$group" "$USER" || true
@@ -435,7 +440,12 @@ if [ "$CVD_MODE" = "1" ]; then
   BOOT_WAIT_ATTEMPTS=180
   SCREEN_START_TIMEOUT=960
   launch_android_runtime() {
-    nohup cvd --group_name="$CVD_GROUP" create \
+    # cvd setup may add the runner to supplementary groups. Re-enter
+    # the same account through sudo so this process receives the refreshed
+    # group list without requiring a runner reboot.
+    nohup sudo -u "$USER" -H env HOME="$HOME" PATH="$PATH" \
+      NISH_CVD_REAL_QEMU="$QEMU_REAL" \
+      cvd --group_name="$CVD_GROUP" create \
       --vm_manager=qemu_cli --qemu_binary_dir="$QEMU_WRAPPER_DIR" \
       --host_path="$CVD_DIR" --product_path="$CVD_DIR" \
       --cpus="$CPU_CORES" --memory_mb="$RAM_MB" \
