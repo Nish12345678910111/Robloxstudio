@@ -241,8 +241,13 @@ export async function createPhoneRow(ownerId, phoneId, edition, env, maxActive =
     inTransaction = true;
     await client.query(`SELECT id FROM users_cloudphone WHERE id=$1 FOR UPDATE`, [ownerId]);
     if (maxActive !== null) {
+      // The free-account cap is for concurrently active phones, not historical
+      // cards. Completed/failed/stopped sessions remain visible in the dashboard
+      // but must not consume a slot for the next phone.
       const { rows } = await client.query(
-        `SELECT count(*)::int AS c FROM phones_cloudphone WHERE owner_id=$1 AND deleted_at IS NULL AND status <> 'busy'`, [ownerId]);
+        `SELECT count(*)::int AS c FROM phones_cloudphone
+         WHERE owner_id=$1 AND deleted_at IS NULL
+           AND status IN ('starting','queued','in_progress','running','deleting')`, [ownerId]);
       if (rows[0].c >= maxActive) {
         await client.query("ROLLBACK");
         inTransaction = false;
