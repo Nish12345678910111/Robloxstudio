@@ -230,7 +230,7 @@ jobs:
           CVD_GROUP=""
           if [ "$EDITION" = "android15-arm64" ]; then
             RUN_IDENTITY="${GITHUB_RUN_ID:-${PHONE_ID:-manual}}"
-            CVD_GROUP="nishcloudphone-$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
+            CVD_GROUP="nishcloudphone$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
           fi
           echo "Cloud phone created."
           echo "Keeping it alive for ${SESSION_MINUTES} minutes."
@@ -275,7 +275,7 @@ jobs:
           EDITION: ${{ inputs.edition }}
         run: |
           RUN_IDENTITY="${GITHUB_RUN_ID:-${PHONE_ID:-manual}}"
-          CVD_GROUP="nishcloudphone-$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
+          CVD_GROUP="nishcloudphone$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
           if [ "$EDITION" = "android15-arm64" ] && command -v cvd >/dev/null 2>&1; then
             cvd --group_name="$CVD_GROUP" stop --clear_instance_dirs >/dev/null 2>&1 || true
           fi
