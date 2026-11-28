@@ -5,28 +5,54 @@ import { useEffect, useRef, useState } from "react";
 const FEATURED_PROJECTS = [
   {
     name: "Nish Cloud Phone",
-    category: "Browser tool",
-    description: "Start a private Android session and control its screen right from your browser.",
+    category: "Browser tool · Android",
+    description: "Start a private cloud Android session and control its screen right from your browser.",
     href: "/cloudphone",
-    action: "Explore Cloud Phone",
+    action: "Open Cloud Phone",
     mark: "☁",
     tone: "blue",
-    status: "Ready to explore",
+    status: "2 deployment targets",
     featured: true,
+    deployments: [
+      { provider: "Cloudflare Pages", host: "nishproductions.pages.dev", href: "https://nishproductions.pages.dev", badge: "CF", tone: "cloudflare" },
+      { provider: "Vercel", host: "nishcloudphone.vercel.app", href: "https://nishcloudphone.vercel.app", badge: "V", tone: "vercel" },
+    ],
   },
   {
     name: "Modern Chat",
-    category: "Web app",
+    category: "Web app · Experiment",
     description: "A lightweight browser chat experiment by nishgamerr, built for quick conversations.",
     href: "https://nish12345678910111.github.io/Nish12345678910111.io/",
     action: "Open Modern Chat",
-    mark: "↗",
+    mark: "✉",
     tone: "violet",
-    status: "Live experiment",
+    status: "GitHub Pages",
     featured: true,
-    external: true,
+    deployments: [
+      { provider: "GitHub Pages", host: "nish12345678910111.github.io/Nish12345678910111.io", href: "https://nish12345678910111.github.io/Nish12345678910111.io/", badge: "GH", tone: "github" },
+    ],
+  },
+  {
+    name: "Nishgamerr Lua Scripts",
+    category: "Script viewer · Roblox",
+    description: "Browse and search the Lua script collection through a lightweight web viewer.",
+    href: "https://nish12345678910111.github.io/myscripts/",
+    action: "Explore the viewer",
+    mark: "{ }",
+    tone: "mint",
+    status: "GitHub Pages",
+    featured: true,
+    deployments: [
+      { provider: "GitHub Pages", host: "nish12345678910111.github.io/myscripts", href: "https://nish12345678910111.github.io/myscripts/", badge: "GH", tone: "github" },
+    ],
   },
 ];
+
+const ALL_DEPLOYMENTS = FEATURED_PROJECTS.flatMap(project => project.deployments.map(deployment => ({
+  ...deployment,
+  project: project.name,
+})));
+const PLATFORM_COUNT = new Set(ALL_DEPLOYMENTS.map(deployment => deployment.provider)).size;
 
 function ArrowIcon({ diagonal = false }) {
   return diagonal ? (
@@ -42,9 +68,46 @@ function FeatureIcon({ kind }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" /><path d="M12 7v5l3.5 2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function ProjectCard({ project }) {
+function DeploymentPreview() {
   return (
-    <article className={`np-project-card tone-${project.tone}${project.featured ? " is-featured" : ""}`}>
+    <div className="np-deploy-preview" aria-hidden="true">
+      <div className="np-deploy-halo" />
+      <div className="np-deploy-window">
+        <div className="np-deploy-browser-bar">
+          <span className="np-deploy-browser-dots"><i /><i /><i /></span>
+          <span className="np-deploy-address"><i /> nishproductions / deployments</span>
+          <span className="np-deploy-menu">···</span>
+        </div>
+        <div className="np-deploy-content">
+          <div className="np-deploy-overview">
+            <div><p>THE PROJECT CONTROL ROOM</p><h2>One home.<br /><em>Many places to go.</em></h2></div>
+            <span className="np-deploy-total"><b>{ALL_DEPLOYMENTS.length}</b><small>deployment<br />targets</small></span>
+          </div>
+          <div className="np-deploy-list">
+            {ALL_DEPLOYMENTS.map((deployment, index) => (
+              <div className="np-deploy-row" key={`${deployment.provider}-${deployment.host}`} style={{ "--row-index": index }}>
+                <span className={`np-deploy-badge np-deploy-badge-${deployment.tone}`}>{deployment.badge}</span>
+                <span className="np-deploy-row-copy"><b>{deployment.project}</b><small>{deployment.provider} <i>·</i> {deployment.host}</small></span>
+                <span className="np-deploy-state"><i /> PUBLISHED</span>
+                <ArrowIcon diagonal />
+              </div>
+            ))}
+          </div>
+          <div className="np-deploy-footer"><span><i /> {FEATURED_PROJECTS.length} PROJECTS</span><span>{PLATFORM_COUNT} HOSTING PLATFORMS</span></div>
+        </div>
+      </div>
+      <div className="np-deploy-float np-deploy-float-one"><span>CF</span> Cloudflare Pages</div>
+      <div className="np-deploy-float np-deploy-float-two"><span>V</span> Vercel</div>
+      <div className="np-deploy-caption"><span>DEPLOYMENT OVERVIEW</span><i /> Multiple projects, easy to reach</div>
+      <span className="np-deploy-spark np-deploy-spark-one">✦</span>
+      <span className="np-deploy-spark np-deploy-spark-two">✳</span>
+    </div>
+  );
+}
+
+function ProjectCard({ project, index }) {
+  return (
+    <article className={`np-project-card tone-${project.tone}${project.featured ? " is-featured" : ""}`} style={{ "--card-index": index }}>
       <div className="np-project-topline">
         <span className={`np-project-mark tone-${project.tone}`} aria-hidden="true">{project.mark}</span>
         <span className="np-project-status"><i />{project.status}</span>
@@ -52,62 +115,29 @@ function ProjectCard({ project }) {
       <p className="np-project-type">{project.category}</p>
       <h3>{project.name}</h3>
       <p className="np-project-description">{project.description}</p>
+      <div className="np-project-deployments" aria-label={`${project.name} deployment links`}>
+        {project.deployments.map(deployment => (
+          <a
+            className="np-deploy-link"
+            href={deployment.href}
+            key={`${deployment.provider}-${deployment.host}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${project.name} on ${deployment.provider}: ${deployment.host} (opens in a new tab)`}
+          >
+            <span className={`np-deploy-link-badge np-deploy-link-badge-${deployment.tone}`}>{deployment.badge}</span>
+            <span className="np-deploy-link-copy"><b>{deployment.provider}</b><small>{deployment.host}</small></span>
+            <ArrowIcon diagonal />
+          </a>
+        ))}
+      </div>
       <div className="np-project-bottom">
-        <span className="np-project-featured-label">{project.featured ? "FEATURED PROJECT" : "ABOUT"}</span>
-        <a className="np-project-link" href={project.href} target={project.external ? "_blank" : undefined} rel={project.external ? "noopener noreferrer" : undefined}>{project.action}<ArrowIcon diagonal={project.external} /></a>
+        <span className="np-project-featured-label">{project.deployments.length} {project.deployments.length === 1 ? "DEPLOYMENT" : "DEPLOYMENTS"}</span>
+        <a className="np-project-link" href={project.href} target={project.href.startsWith("http") ? "_blank" : undefined} rel={project.href.startsWith("http") ? "noopener noreferrer" : undefined}>
+          {project.action}<ArrowIcon diagonal={project.href.startsWith("http")} />
+        </a>
       </div>
     </article>
-  );
-}
-
-function BrowserPreview() {
-  return (
-    <div className="np-preview-stage" aria-hidden="true">
-      <div className="np-preview-halo" />
-      <div className="np-preview-window">
-        <div className="np-browser-bar">
-          <span className="np-browser-dots"><i /><i /><i /></span>
-          <span className="np-browser-address"><span className="np-lock-icon">⌑</span> nishcloudphone.app / dashboard</span>
-          <span className="np-browser-menu">···</span>
-        </div>
-        <div className="np-preview-app">
-          <aside className="np-preview-sidebar">
-            <div className="np-preview-brand"><span>n</span><b>nishcloud</b></div>
-            <p className="np-preview-side-label">WORKSPACE</p>
-            <div className="np-preview-side-link is-current"><span>▣</span> My phones <i>1</i></div>
-            <div className="np-preview-side-link"><span>＋</span> New phone</div>
-            <div className="np-preview-user"><span className="np-preview-avatar">n</span><span><b>nishgamerr</b><small>Free account</small></span><i>⌄</i></div>
-          </aside>
-          <div className="np-preview-main">
-            <div className="np-preview-toolbar"><span>MY CLOUD PHONES</span><span className="np-preview-status"><i /> SESSION PREVIEW</span></div>
-            <div className="np-preview-heading"><div><p>YOUR WORKSPACE</p><h2>Android,<br /><em>within reach.</em></h2><span>One screen. Right here in your browser.</span></div><span className="np-preview-plus">＋</span></div>
-            <div className="np-preview-device-area">
-              <div className="np-preview-device-glow" />
-              <div className="np-device">
-                <span className="np-device-camera" />
-                <div className="np-device-screen">
-                  <div className="np-device-status"><span>9:41</span><span>● ● ▰</span></div>
-                  <div className="np-device-date">MONDAY, OCTOBER 12</div>
-                  <div className="np-device-clock">9:41</div>
-                  <div className="np-device-weather"><span>☼</span><span>Clear skies <b>22°</b></span></div>
-                  <div className="np-device-apps">
-                    <span><i className="np-app-blue">W</i><small>Web</small></span>
-                    <span><i className="np-app-pink">P</i><small>Photos</small></span>
-                    <span><i className="np-app-violet">S</i><small>Settings</small></span>
-                    <span><i className="np-app-green">M</i><small>Maps</small></span>
-                  </div>
-                  <div className="np-device-dock"><i>☎</i><i>◉</i><i>✉</i><i>◈</i></div>
-                </div>
-              </div>
-              <div className="np-preview-callout"><span>↗</span><span><b>Browser controlled</b><small>No setup on your device</small></span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="np-preview-caption"><span>INTERFACE PREVIEW</span><i /> A cloud phone, in your browser</div>
-      <span className="np-preview-spark np-preview-spark-a">✦</span>
-      <span className="np-preview-spark np-preview-spark-b">✳</span>
-    </div>
   );
 }
 
@@ -149,13 +179,13 @@ export default function PublicHome() {
           <button className="np-drawer-close" type="button" aria-label="Close navigation menu" onClick={closeMenu}>×</button>
         </div>
         <p className="np-drawer-kicker">EXPLORE</p>
-        <h2 id="np-drawer-title">Make yourself<br />at home.</h2>
+        <h2 id="np-drawer-title">One home.<br />Many places to go.</h2>
         <nav className="np-drawer-nav" aria-label="Site navigation">
           <a href="/home" onClick={closeMenu}><span>01</span> Home <b>↗</b></a>
-          <a href="#features" onClick={closeMenu}><span>02</span> Why Cloud Phone <b>↗</b></a>
-          <a href="#how-it-works" onClick={closeMenu}><span>03</span> How it works <b>↗</b></a>
-          <a href="#projects" onClick={closeMenu}><span>04</span> Featured projects <b>↗</b></a>
-          <a className="np-drawer-start" href="/cloudphone/signup" onClick={closeMenu}>Create a free account <ArrowIcon /></a>
+          <a href="#deployments" onClick={closeMenu}><span>02</span> Check deployments <b>↗</b></a>
+          <a href="#cloudphone" onClick={closeMenu}><span>03</span> About Cloud Phone <b>↗</b></a>
+          <a href="#how-it-works" onClick={closeMenu}><span>04</span> How it works <b>↗</b></a>
+          <a className="np-drawer-start" href="/cloudphone" onClick={closeMenu}>Open Cloud Phone <ArrowIcon /></a>
         </nav>
         <div className="np-drawer-divider" />
         <p className="np-drawer-kicker">GOOD TO KNOW</p>
@@ -172,10 +202,11 @@ export default function PublicHome() {
           <span className="np-brand-copy">Nish <b>Productions</b><small>INDEPENDENT DIGITAL PROJECTS</small></span>
         </a>
         <nav className="np-header-nav" aria-label="Page sections">
-          <a href="#features">Why Cloud Phone</a>
+          <a href="#deployments">Deployments</a>
+          <a href="#cloudphone">Cloud Phone</a>
           <a href="#how-it-works">How it works</a>
-          <a href="#projects">Projects</a>
         </nav>
+        <a className="np-header-cta" href="#deployments" aria-label="Check deployments"><span>Check deployments</span><ArrowIcon /></a>
         <button ref={menuButtonRef} className={`np-menu-button${menuOpen ? " is-open" : ""}`} type="button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="np-site-menu" onClick={() => setMenuOpen(open => !open)}>
           <span className="np-menu-glyph" aria-hidden="true"><i /><i /><i /></span>
           <span>{menuOpen ? "Close" : "Menu"}</span>
@@ -185,50 +216,58 @@ export default function PublicHome() {
       <main>
         <section className="np-hero" aria-labelledby="np-hero-title">
           <div className="np-hero-copy">
-            <p className="np-eyebrow"><span className="np-eyebrow-dot" /> A SMALL IDEA WITH A BIG SCREEN <i /> NISH CLOUD PHONE</p>
-            <h1 id="np-hero-title">Android,<br />without the<br /><em>extra device.</em></h1>
-            <p className="np-hero-lede">Start a cloud Android phone and control its screen from your browser. No emulator to install on your own device.</p>
+            <p className="np-eyebrow"><span className="np-eyebrow-dot" /> NISH PRODUCTIONS <i /> MULTI-DEPLOYMENT PROJECT HUB</p>
+            <h1 id="np-hero-title">One home.<br />Many things<br /><em>to explore.</em></h1>
+            <p className="np-hero-lede">Browse tools, experiments, and live deployments by nishgamerr. Choose a project, pick its hosted home, and jump straight in.</p>
             <div className="np-hero-actions">
-              <a className="np-button-primary" href="/cloudphone/signup">Create a free account <ArrowIcon /></a>
-              <a className="np-button-secondary" href="/cloudphone/login">Already have an account? <b>Log in</b></a>
+              <a className="np-button-primary" href="#deployments">Check deployments <ArrowIcon /></a>
+              <a className="np-button-secondary" href="/cloudphone">Open Cloud Phone <b>↗</b></a>
             </div>
-            <div className="np-hero-points" aria-label="Cloud Phone details">
-              <span><i>✓</i> Free to start</span>
-              <span><i>✓</i> Browser-based</span>
-              <span><i>✓</i> Temporary sessions</span>
+            <div className="np-hero-points" aria-label="Projects and deployments">
+              <span><i>✓</i> {FEATURED_PROJECTS.length} featured projects</span>
+              <span><i>✓</i> {ALL_DEPLOYMENTS.length} deployment endpoints</span>
+              <span><i>✓</i> {PLATFORM_COUNT} hosting platforms</span>
             </div>
-            <a className="np-scroll-cue" href="#how-it-works"><span>↓</span> Take a closer look</a>
+            <a className="np-scroll-cue" href="#deployments"><span>↓</span> Browse what's deployed</a>
           </div>
-          <BrowserPreview />
+          <DeploymentPreview />
           <span className="np-hero-index" aria-hidden="true">01 <i /> 03</span>
         </section>
 
-        <section className="np-proof-strip" aria-label="Cloud Phone at a glance">
-          <div><span className="np-proof-number">01</span><span><b>Made for the browser</b><small>Open your Android screen online</small></span></div>
-          <div><span className="np-proof-number">02</span><span><b>Account-managed</b><small>Create and manage your sessions</small></span></div>
-          <div><span className="np-proof-number">03</span><span><b>Nothing to install locally</b><small>Use the screen from your device</small></span></div>
+        <section className="np-proof-strip" aria-label="Deployment totals">
+          <div><span className="np-proof-number">{String(FEATURED_PROJECTS.length).padStart(2, "0")}</span><span><b>Featured projects</b><small>Tools, apps, and experiments</small></span></div>
+          <div><span className="np-proof-number">{String(ALL_DEPLOYMENTS.length).padStart(2, "0")}</span><span><b>Deployment endpoints</b><small>Choose the hosted version you need</small></span></div>
+          <div><span className="np-proof-number">{String(PLATFORM_COUNT).padStart(2, "0")}</span><span><b>Hosting platforms</b><small>Cloudflare, Vercel, GitHub Pages</small></span></div>
         </section>
 
-        <section className="np-section np-features" id="features" aria-labelledby="np-features-title">
+        <section className="np-projects" id="deployments" aria-labelledby="np-projects-title">
+          <div className="np-projects-heading">
+            <div><p className="np-section-kicker"><span /> THE DEPLOYMENT DIRECTORY</p><h2 id="np-projects-title">Pick a project.<br /><em>Choose where to open it.</em></h2><p>Not just a sign-up page: explore every featured project and its deployment links in one place.</p></div>
+            <a className="np-projects-jump" href="#featured-project-cards">Browse all deployments <span aria-hidden="true">↓</span></a>
+          </div>
+          <div className="np-project-grid" id="featured-project-cards">{FEATURED_PROJECTS.map((project, index) => <ProjectCard key={project.name} project={project} index={index} />)}</div>
+        </section>
+
+        <section className="np-section np-features" id="cloudphone" aria-labelledby="np-features-title">
           <div className="np-section-intro">
-            <p className="np-section-kicker"><span /> WHY CLOUD PHONE</p>
-            <h2 id="np-features-title">A pocket-sized idea.<br /><em>A whole new way to try it.</em></h2>
-            <p>Keep the setup simple and the experience right where you need it: in your browser.</p>
+            <p className="np-section-kicker"><span /> FEATURED PROJECT · NISH CLOUD PHONE</p>
+            <h2 id="np-features-title">Android in a browser.<br /><em>One click away.</em></h2>
+            <p>Cloud Phone is one project in the collection, with multiple hosted destinations and a simple browser-first experience.</p>
           </div>
           <div className="np-feature-grid">
             <article className="np-feature-card np-feature-card-large">
               <span className="np-feature-index">01 / ACCESS</span>
               <span className="np-feature-icon"><FeatureIcon kind="browser" /></span>
               <h3>Your Android, in a browser tab.</h3>
-              <p>Open the live phone screen from your dashboard and interact with it without installing an emulator on your own device.</p>
-              <a href="/cloudphone/signup" aria-label="Create an account to use Cloud Phone">Explore Cloud Phone <ArrowIcon /></a>
+              <p>Open the phone screen from your dashboard and interact without installing an emulator on your own device.</p>
+              <a href="/cloudphone" aria-label="Open Nish Cloud Phone">Open Cloud Phone <ArrowIcon /></a>
               <div className="np-feature-decoration" aria-hidden="true"><span>WEB</span><i /><b>↗</b></div>
             </article>
             <article className="np-feature-card">
               <span className="np-feature-index">02 / YOUR ACCOUNT</span>
               <span className="np-feature-icon"><FeatureIcon kind="account" /></span>
               <h3>One place to manage it.</h3>
-              <p>Create, open, stop, and remove your cloud phones from your account dashboard.</p>
+              <p>Create, open, stop, and remove cloud phones from the account dashboard.</p>
               <span className="np-feature-footnote">YOUR DASHBOARD · YOUR CONTROLS</span>
             </article>
             <article className="np-feature-card">
@@ -243,31 +282,23 @@ export default function PublicHome() {
 
         <section className="np-how" id="how-it-works" aria-labelledby="np-how-title">
           <div className="np-how-heading">
-            <div><p className="np-section-kicker"><span /> THREE SIMPLE STEPS</p><h2 id="np-how-title">From zero to <em>Android.</em></h2></div>
-            <p>No setup guide, no local emulator, no complicated install. Start from your account and follow along.</p>
+            <div><p className="np-section-kicker"><span /> START WITH CLOUD PHONE</p><h2 id="np-how-title">Three steps to <em>Android.</em></h2></div>
+            <p>The other deployments open directly. For Cloud Phone, create an account to start a private, time-limited browser session.</p>
           </div>
           <div className="np-steps">
             <article className="np-step"><span className="np-step-number">01</span><div className="np-step-line" /><p>FIRST, JOIN</p><h3>Create your account</h3><span>Sign up for a free Nish Cloud Phone account.</span></article>
-            <article className="np-step"><span className="np-step-number">02</span><div className="np-step-line" /><p>THEN, LAUNCH</p><h3>Start a phone</h3><span>Choose an Android profile and create a session from your dashboard.</span></article>
+            <article className="np-step"><span className="np-step-number">02</span><div className="np-step-line" /><p>THEN, LAUNCH</p><h3>Start a phone</h3><span>Choose an Android profile and create a session from the dashboard.</span></article>
             <article className="np-step"><span className="np-step-number">03</span><div className="np-step-line" /><p>YOU'RE IN</p><h3>Use it in your browser</h3><span>Open the live screen and control your phone right from the page.</span></article>
           </div>
-        </section>
-
-        <section className="np-projects" id="projects" aria-labelledby="np-projects-title">
-          <div className="np-projects-heading">
-            <div><p className="np-section-kicker"><span /> THE PROJECT SHELF</p><h2 id="np-projects-title">Made to <em>explore.</em></h2><p>A growing collection of things we're working on. Pick a project and take a look.</p></div>
-            <a className="np-projects-jump" href="#featured-project-cards">Browse projects <span aria-hidden="true">↓</span></a>
-          </div>
-          <div className="np-project-grid" id="featured-project-cards">{FEATURED_PROJECTS.map(project => <ProjectCard key={project.name} project={project} />)}</div>
         </section>
 
         <section className="np-final-cta" aria-labelledby="np-final-title">
           <div className="np-cta-orb np-cta-orb-one" aria-hidden="true" /><div className="np-cta-orb np-cta-orb-two" aria-hidden="true" />
           <div className="np-final-copy">
-            <p className="np-section-kicker"><span /> YOUR NEXT SCREEN IS CLOSER THAN YOU THINK</p>
-            <h2 id="np-final-title">Give your idea<br /><em>a phone of its own.</em></h2>
-            <p>Create a free account and launch your first cloud phone when you're ready.</p>
-            <a className="np-button-primary" href="/cloudphone/signup">Get started for free <ArrowIcon /></a>
+            <p className="np-section-kicker"><span /> ALL PROJECTS, ONE STARTING POINT</p>
+            <h2 id="np-final-title">Find your next<br /><em>thing to explore.</em></h2>
+            <p>Jump into the deployments directory or start a Cloud Phone session whenever you're ready.</p>
+            <div className="np-final-actions"><a className="np-button-primary" href="#deployments">Browse deployments <ArrowIcon /></a><a className="np-final-link" href="/cloudphone/signup">Create a Cloud Phone account</a></div>
           </div>
           <div className="np-cta-stamp" aria-hidden="true"><span>MADE FOR</span><b>the<br />curious</b><i>✦</i></div>
         </section>
