@@ -421,14 +421,20 @@ jobs:
               } else {
                 // A legacy stored run ID can be from either workflow. A 404
                 // is trusted only when the helper can verify workflow access.
+                let everyWorkflowConfirmedMissing = true;
                 for (const env of workflowEnvs) {
                   const candidate = await getRunStatus(runId, env).catch(() => "unknown");
-                  if (candidate !== "unknown") {
-                    status = candidate;
-                    usedEnv = env;
-                    break;
+                  if (candidate === "unknown") {
+                    everyWorkflowConfirmedMissing = false;
+                    continue;
                   }
+                  if (candidate === null) continue;
+                  status = candidate;
+                  usedEnv = env;
+                  everyWorkflowConfirmedMissing = false;
+                  break;
                 }
+                if (status === "unknown" && everyWorkflowConfirmedMissing) status = null;
               }
 
               if (status === null) continue;
