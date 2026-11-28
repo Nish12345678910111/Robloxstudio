@@ -1,6 +1,6 @@
 # Nish Productions
 
-The public home for Nish Cloud Phone, a browser-based Android session by nishgamerr. Visit `/home` to open Cloud Phone and its Cloudflare Pages deployment. Cloud Phone account and dashboard pages live under `/cloudphone`.
+The public home for Nish Cloud Phone, a browser-based Android session by nishgamerr. Visit `/home` to open Cloud Phone. Account and dashboard pages live under `/cloudphone`.
 
 ## ☁️📱 NishCloudPhone
 
@@ -50,6 +50,6 @@ Vercel uses `vercel.json` and `npm run vercel:build`. It hosts the shared API ha
 
 ## Cloud Phone display and input
 
-The default Android 11 and opt-in Android 15 x86_64 profiles run Android Emulator headlessly and mirror only the device display with scrcpy into Xvfb. Android 15 ARM64 is paused because hosted ARM64 runners have not provided usable KVM. Both supported profiles use the official noVNC client over x11vnc/websockify for viewing and input; emulator host dialogs and controls are kept out of the mirrored display. On-screen keyboard support and noVNC keyboard/clipboard input are enabled.
+Android 11 and Android 15 x86_64 run on the standard hosted runner. Android 15 ARM64 uses the native Cuttlefish ARM64 phone build on a self-hosted Linux ARM64 runner with working KVM. Register that runner with the labels `self-hosted`, `linux`, `ARM64`, and `kvm`; the workflow checks its architecture, readable/writable `/dev/kvm`, memory, and vCPU count before starting. Give the runner passwordless `sudo`, at least 16 GB RAM, and 4 vCPUs for the configured phone profile. Use one dedicated ARM64 runner host per simultaneously running ARM64 phone; the workflow uses Cuttlefish's local ADB endpoint and a shared per-user ADB server. Android Emulator and Cuttlefish run headlessly and mirror only the device display with scrcpy into Xvfb. The official noVNC client over x11vnc/websockify handles viewing and input; emulator host dialogs and controls stay out of the mirrored display.
 
-Phone starts still need a GitHub-hosted runner to boot and initialize Android. The SDK/runtime cache reduces repeat startup work after its first successful preparation, but a cold runner cannot start literally instantly.
+The SDK/runtime cache reduces repeat startup work after its first successful preparation, but a cold runner cannot start literally instantly.
