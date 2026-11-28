@@ -1,11 +1,12 @@
 import { getUser } from "../../../_lib/auth.js";
 import { deletePhoneRow, getPhoneByRun, getPhoneRowById, markPhoneDeletedByRun, setPhoneStatus } from "../../../_lib/db.js";
-import { cancelRun, deleteRun, findRunIdsByPhoneId, getRunStatus, listPhones } from "../../../_lib/github.js";
+import { cancelRun, cloudPhoneWorkflowEnv, deleteRun, findRunIdsByPhoneId, getRunStatus, listPhones } from "../../../_lib/github.js";
 import { json, sameOrigin } from "../../../_lib/http.js";
 
 const BUSY = "Many users are using free cloud phones, try again later.";
 
 export async function onRequestDelete({ request, env, params }) {
+  const workflowEnv = cloudPhoneWorkflowEnv(env);
   if (!sameOrigin(request)) return json({ error: "Request blocked." }, 403);
   const user = await getUser(request, env);
   if (!user) return json({ error: "unauthorized" }, 401);
@@ -14,7 +15,7 @@ export async function onRequestDelete({ request, env, params }) {
     let row = /^\d+$/.test(param) ? await getPhoneByRun(Number(param), env).catch(() => null) : null;
     if (!row) row = await getPhoneRowById(param, env).catch(() => null);
     if (!row && /^\d+$/.test(param)) {
-      const liveRun = (await listPhones(true, env)).find(phone => String(phone.runId) === param);
+      const liveRun = (await listPhones(true, workflowEnv)).find(phone => String(phone.runId) === param);
       if (liveRun?.phoneId && liveRun.phoneId !== "…") row = await getPhoneRowById(liveRun.phoneId, env).catch(() => null);
     }
     if (user.role !== "admin" && (!row || row.owner_id !== user.id)) {
@@ -25,7 +26,7 @@ export async function onRequestDelete({ request, env, params }) {
     if (/^\d+$/.test(param)) runIds.add(param);
     if (row?.run_id) runIds.add(String(row.run_id));
     if (row?.phone_id) {
-      for (const id of await findRunIdsByPhoneId(row.phone_id, env)) runIds.add(String(id));
+      for (const id of await findRunIdsByPhoneId(row.phone_id, workflowEnv)) runIds.add(String(id));
     }
 
     const finish = async () => {
@@ -50,18 +51,18 @@ export async function onRequestDelete({ request, env, params }) {
 
     let pendingState = null;
     for (const runId of runIds) {
-      const status = await getRunStatus(runId, env);
+      const status = await getRunStatus(runId, workflowEnv);
       if (status === null) continue;
       if (status !== "completed") {
         if (row?.phone_id) await setPhoneStatus(row.phone_id, "deleting", env).catch(() => {});
-        await cancelRun(runId, env).catch(() => {});
+        await cancelRun(runId, workflowEnv).catch(() => {});
         pendingState = "stopping";
         continue;
       }
-      await deleteRun(runId, env).catch(() => null);
+      await deleteRun(runId, workflowEnv).catch(() => null);
       // Do not remove the database row until GitHub confirms every matching
       // run has vanished, including any duplicate dispatches from the past.
-      if (await getRunStatus(runId, env).catch(() => "unknown") !== null) pendingState ||= "deleting";
+      if (await getRunStatus(runId, workflowEnv).catch(() => "unknown") !== null) pendingState ||= "deleting";
     }
     if (pendingState) return json({ ok: true, deleted: false, state: pendingState }, 202);
     return finish();
