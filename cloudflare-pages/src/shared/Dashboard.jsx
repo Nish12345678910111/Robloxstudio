@@ -120,14 +120,19 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
     if (t && t !== noticeRef.current) pushToast("warn", t);
     noticeRef.current = t || null;
   }, [pushToast]);
-  const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem("ncp_hidden") || "[]")); } catch { return new Set(); } });
+  // Hide a card optimistically only for the current page session. Persisting
+  // hidden IDs across reloads could conceal undeleted database rows and make
+  // the dashboard count disagree with the server-side five-phone quota.
+  const [hidden, setHidden] = useState(() => {
+    try { localStorage.removeItem("ncp_hidden"); } catch {}
+    return new Set();
+  });
   const setPhoneHidden = (p, isHidden) => setHidden(h => {
     const n = new Set(h);
     for (const id of [p.phoneId, p.runId]) {
       if (id == null) continue;
       if (isHidden) n.add(String(id)); else n.delete(String(id));
     }
-    localStorage.setItem("ncp_hidden", JSON.stringify([...n]));
     return n;
   });
   const load = useCallback(async () => {
