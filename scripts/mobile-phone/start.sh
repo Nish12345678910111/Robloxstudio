@@ -37,10 +37,7 @@ if [ "$EDITION" = "android15-arm64" ]; then
     aarch64|arm64) ;;
     *) echo "Android 15 ARM64 Cuttlefish requires an ARM64 host; found $HOST_ARCH." >&2; exit 2 ;;
   esac
-  if [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
-    echo "Android 15 ARM64 Cuttlefish requires a readable and writable /dev/kvm device." >&2
-    exit 2
-  fi
+  echo "ARM64 host detected; KVM is optional. QEMU TCG will be used when unavailable."
 fi
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -234,7 +231,11 @@ if [ "$CVD_MODE" = "1" ]; then
     apt_get install -y -qq cuttlefish-base cuttlefish-user >>"$CVD_LOG" 2>&1 \
       || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
   fi
-  sudo usermod -aG kvm,cvdnetwork,render "$USER"
+  for group in kvm cvdnetwork render; do
+    if getent group "$group" >/dev/null 2>&1; then
+      sudo usermod -aG "$group" "$USER" || true
+    fi
+  done
   if [ ! -x "$CVD_DIR/host/usr/bin/adb" ] || [ ! -d "$CVD_DIR/product" ]; then
     rm -rf "$CVD_DIR"
     mkdir -p "$CVD_DIR"
@@ -253,6 +254,42 @@ if [ "$CVD_MODE" = "1" ]; then
     tail -n 80 "$CVD_LOG" >&2 || true
     exit 1
   }
+  # Use Cuttlefish QEMU rather than the KVM-only crosvm path. QEMU falls back
+  # to TCG when /dev/kvm is unavailable, keeping the guest architecture ARM64.
+  QEMU_REAL="$(find "$CVD_DIR/host" -type f -name qemu-system-aarch64 -perm /111 -print -quit 2>/dev/null || true)"
+  if [ -z "$QEMU_REAL" ] && [ -x /usr/bin/qemu-system-aarch64 ]; then QEMU_REAL=/usr/bin/qemu-system-aarch64; fi
+  if [ -z "$QEMU_REAL" ]; then
+    echo "Cuttlefish ARM64 QEMU binary was not found; cannot start without KVM." >&2
+    find "$CVD_DIR/host" -maxdepth 7 -iname "*qemu*" -print 2>/dev/null | head -n 40 >&2 || true
+    exit 1
+  fi
+  QEMU_WRAPPER_DIR="$WORKDIR_PHONE/qemu-tcg-wrapper"
+  mkdir -p "$QEMU_WRAPPER_DIR"
+  cat > "$QEMU_WRAPPER_DIR/qemu-system-aarch64" <<'WRAPPER'
+#!/usr/bin/env bash
+set -euo pipefail
+REAL_QEMU="${NISH_CVD_REAL_QEMU:?}"
+args=()
+skip_next=0
+for arg in "$@"; do
+  if [ "$skip_next" = "1" ]; then
+    if [ "$arg" = "kvm" ]; then args+=("tcg,thread=multi"); else args+=("$arg"); fi
+    skip_next=0
+    continue
+  fi
+  case "$arg" in
+    -enable-kvm) continue ;;
+    -accel) args+=("$arg"); skip_next=1; continue ;;
+    -cpu=host) args+=("-cpu=max"); continue ;;
+  esac
+  arg="${arg//accel=kvm/accel=tcg,thread=multi}"
+  arg="${arg//-cpu host/-cpu max}"
+  args+=("$arg")
+done
+exec "$REAL_QEMU" "${args[@]}"
+WRAPPER
+  chmod +x "$QEMU_WRAPPER_DIR/qemu-system-aarch64"
+  export NISH_CVD_REAL_QEMU="$QEMU_REAL"
   if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "runtime_cache_ready=true" >> "$GITHUB_OUTPUT"; fi
 else
   # Fast path: CI runners ship Java + Android SDK preinstalled - use them and
@@ -366,6 +403,7 @@ if [ "$CVD_MODE" = "1" ]; then
   SCREEN_START_TIMEOUT=960
   launch_android_runtime() {
     nohup cvd --group_name="$CVD_GROUP" create \
+      --vm_manager=qemu_cli --qemu_binary_dir="$QEMU_WRAPPER_DIR" \
       --host_path="$CVD_DIR" --product_path="$CVD_DIR" \
       --cpus="$CPU_CORES" --memory_mb="$RAM_MB" \
       --blank_data_image_mb="$((DISK_GB * 1024))" --data_policy=always_create \
@@ -376,7 +414,7 @@ if [ "$CVD_MODE" = "1" ]; then
   launch_android_runtime
   sleep 10
   if ! emu_alive; then
-    echo "Android 15 ARM64 Cuttlefish did not start with KVM; refusing a software-emulated phone." >&2
+    echo "Android 15 ARM64 Cuttlefish did not start with QEMU TCG software emulation." >&2
     tail -n 100 "$CVD_LOG" 2>/dev/null || true
     exit 1
   fi
