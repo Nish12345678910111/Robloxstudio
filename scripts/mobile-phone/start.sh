@@ -236,27 +236,35 @@ if [ "$CVD_MODE" = "1" ]; then
       sudo usermod -aG "$group" "$USER" || true
     fi
   done
-  if [ ! -x "$CVD_DIR/host/usr/bin/adb" ] || [ ! -s "$CVD_DIR/fetcher_config.json" ]; then
+  # cvd fetch writes the product images directly into target_directory;
+  # there is no required "$CVD_DIR/product" child directory. Host tools may
+  # also be laid out differently between Cuttlefish package revisions, so
+  # locate adb rather than assuming one fixed subdirectory.
+  CVD_ADB="$(find "$CVD_DIR" -type f -name adb -perm /111 -print -quit 2>/dev/null || true)"
+  if [ ! -s "$CVD_DIR/fetcher_config.json" ] || [ -z "$CVD_ADB" ]; then
     rm -rf "$CVD_DIR"
     mkdir -p "$CVD_DIR"
     cvd fetch --default_build="$CVD_BUILD" --target_directory="$CVD_DIR" \
       >>"$CVD_LOG" 2>&1 \
       || { tail -n 100 "$CVD_LOG" >&2; exit 1; }
+    CVD_ADB="$(find "$CVD_DIR" -type f -name adb -perm /111 -print -quit 2>/dev/null || true)"
   fi
-  if [ ! -x "$CVD_DIR/host/usr/bin/adb" ] || [ ! -s "$CVD_DIR/fetcher_config.json" ]; then
-    echo "Cuttlefish fetch completed without its host tools or fetcher manifest." >&2
+  if [ ! -s "$CVD_DIR/fetcher_config.json" ] || [ -z "$CVD_ADB" ]; then
+    echo "Cuttlefish fetch completed, but its manifest or adb host tool is missing." >&2
+    echo "Fetched directory entries:" >&2
+    find "$CVD_DIR" -maxdepth 4 -type f -printf '%P\\n' 2>/dev/null | head -n 80 >&2 || true
     tail -n 80 "$CVD_LOG" >&2 || true
     exit 1
   fi
-  export PATH="$CVD_DIR/host/usr/bin:$PATH"
+  export PATH="$(dirname "$CVD_ADB"):$CVD_DIR/host/usr/bin:$PATH"
   command -v adb >/dev/null 2>&1 || {
-    echo "Cuttlefish host tools did not provide adb." >&2
+    echo "Cuttlefish adb host tool could not be added to PATH." >&2
     tail -n 80 "$CVD_LOG" >&2 || true
     exit 1
   }
   # Use Cuttlefish QEMU rather than the KVM-only crosvm path. QEMU falls back
   # to TCG when /dev/kvm is unavailable, keeping the guest architecture ARM64.
-  QEMU_REAL="$(find "$CVD_DIR/host" -type f -name qemu-system-aarch64 -perm /111 -print -quit 2>/dev/null || true)"
+  QEMU_REAL="$(find "$CVD_DIR" -type f -name qemu-system-aarch64 -perm /111 -print -quit 2>/dev/null || true)"
   if [ -z "$QEMU_REAL" ] && [ -x /usr/bin/qemu-system-aarch64 ]; then QEMU_REAL=/usr/bin/qemu-system-aarch64; fi
   if [ -z "$QEMU_REAL" ]; then
     echo "Cuttlefish ARM64 QEMU binary was not found; cannot start without KVM." >&2
