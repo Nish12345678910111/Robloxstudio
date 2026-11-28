@@ -48,6 +48,22 @@ test("Android 15 profiles are opt-in and Android 11 stays the default", () => {
   assert.match(dashboardScript, /Android 15 ARM64 guest \(Cuttlefish ARM64 runner\)/);
 });
 
+test("ARM64 KVM is loaded and preflighted before publishing the phone viewer", () => {
+  const accelerationStart = workflowScript.indexOf("- name: Enable hardware acceleration");
+  const screenServiceStart = workflowScript.indexOf("- name: Start screen service");
+  const accelerationStep = workflowScript.slice(accelerationStart, screenServiceStart);
+  assert.ok(accelerationStart >= 0 && screenServiceStart > accelerationStart);
+  assert.match(accelerationStep, /sudo modprobe kvm/);
+  assert.match(accelerationStep, /ARM64 Cuttlefish KVM preflight: READY/);
+  assert.match(accelerationStep, /\[ ! -c \/dev\/kvm \] \|\| \[ ! -r \/dev\/kvm \] \|\| \[ ! -w \/dev\/kvm \]/);
+
+  const scriptPreflight = startScript.indexOf("Validate virtualization before starting the public viewer/tunnel.");
+  const liveSection = startScript.indexOf("# ------------------------------------------------------ live FIRST");
+  assert.ok(scriptPreflight >= 0 && liveSection > scriptPreflight);
+  assert.match(startScript, /\[ "\$EDITION" = "android15-arm64" \] && \[ "\$\{PHASE:-2\}" != "1" \]/);
+  assert.match(startScript, /\[ ! -c \/dev\/kvm \] \|\| \[ ! -r \/dev\/kvm \] \|\| \[ ! -w \/dev\/kvm \]/);
+});
+
 test("the ARM64 pilot uses the matching Cuttlefish phone image and ADB endpoint", () => {
   assert.match(startScript, /PHONE_SYSTEM_IMAGE="Cuttlefish android15-qpr2-release\/aosp_cf_arm64_only_phone-userdebug"/);
   assert.match(startScript, /The ARM64 Cuttlefish profile requires an ARM64 host/);
