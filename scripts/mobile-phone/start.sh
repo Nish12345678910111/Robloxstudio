@@ -276,10 +276,15 @@ for arg in "$@"; do
     if [ "$arg" = "kvm" ]; then args+=("tcg,thread=multi"); else args+=("$arg"); fi
     skip_next=0
     continue
+  elif [ "$skip_next" = "2" ]; then
+    if [ "$arg" = "host" ]; then args+=("max"); else args+=("$arg"); fi
+    skip_next=0
+    continue
   fi
   case "$arg" in
     -enable-kvm) continue ;;
     -accel) args+=("$arg"); skip_next=1; continue ;;
+    -cpu) args+=("$arg"); skip_next=2; continue ;;
     -cpu=host) args+=("-cpu=max"); continue ;;
   esac
   arg="${arg//accel=kvm/accel=tcg,thread=multi}"
