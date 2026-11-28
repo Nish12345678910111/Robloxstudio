@@ -1,4 +1,4 @@
-name: Cloud Phone
+name: Cloud Phone (NEW ARM64)
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
 # Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 runs on GitHub-hosted ARM64; Cuttlefish uses its QEMU backend with TCG when KVM is unavailable.
