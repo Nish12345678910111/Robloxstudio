@@ -74,7 +74,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
     }
   }
   return (<section className="card">
-    <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android15-arm64" ? "Android 15 ARM64 · KVM" : p.edition === "android15" ? "Android 15 x86_64" : "Android 11"}</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : !p.owner && user.role === "admin" && p.ownerStatus === "unavailable" ? " · owner unavailable (unlinked run)" : ""}</span></div>
+    <header className="cardHead"><div><h3>📱 Cloud Phone · {p.edition === "android15-arm64" ? "Android 15 ARM64 · QEMU TCG" : p.edition === "android15" ? "Android 15 x86_64" : "Android 11"}</h3><span className="muted">{p.phoneId} · started {fmt(p.createdAt)}{p.owner && p.owner !== user.username ? ` · by ${p.owner}` : !p.owner && user.role === "admin" && p.ownerStatus === "unavailable" ? " · owner unavailable (unlinked run)" : ""}</span></div>
       <span className={live ? "badge live" : "badge"}>{state}</span></header>
     <div className="credBox">
       <p><b>Url -</b> {p.viewerUrl ? <a href={frameUrl || p.viewerUrl} target="_blank" rel="noreferrer">{p.viewerUrl}</a> : "waiting for connection…"}</p>
@@ -104,7 +104,7 @@ function PhoneCard({ p, user, onStop, onDelete, onToast }) {
 }
 export default function Dashboard({ user, tokenReady, adSlot = null }) {
   const [phones, setPhones] = useState([]), [creating, setCreating] = useState(false);
-  const [phoneEdition, setPhoneEdition] = useState("android11");
+  const [phoneEdition, setPhoneEdition] = useState("android15-arm64");
   const [health, setHealth] = useState(null);
   const [toasts, setToasts] = useState([]);
   const toastId = useRef(0);
@@ -168,7 +168,7 @@ export default function Dashboard({ user, tokenReady, adSlot = null }) {
         status: d.state === "busy" ? "busy" : "starting", createdAt: new Date().toISOString(),
         viewerUrl: null, password: null }, ...ps]);
       if (d.state === "busy") setNotice("Many users are using free cloud phones, try again later.");
-      else setMsg(`✅ Android ${edition === "android15-arm64" ? "15 ARM64 (KVM)" : edition === "android15" ? "15 x86_64 compatibility test" : "11"} phone created — it is starting.`);
+      else setMsg(`✅ Android ${edition === "android15-arm64" ? "15 ARM64 (software emulation)" : edition === "android15" ? "15 x86_64 compatibility test" : "11"} phone created — it is starting.`);
       load();
     } else setNotice(d.error || "Many users are using free cloud phones, try again later.");
     setCreating(false);
