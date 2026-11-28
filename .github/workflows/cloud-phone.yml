@@ -1,9 +1,9 @@
 name: Cloud Phone
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
-# Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 routes to a
-# self-hosted Linux ARM64 runner labeled self-hosted, linux, ARM64, kvm; the job
-# checks KVM and starts the native ARM64 Cuttlefish guest.
+# Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 runs on a
+# self-hosted Linux ARM64 runner; the job checks real KVM access before starting
+# the native guest, so it does not need a separately configured `kvm` label.
 # The phone's URL/password are stored only in the owner's account database row
 # (via AIVEN_DATABASE_URL); they are never printed, uploaded, or committed.
 #
@@ -21,11 +21,16 @@ on:
         default: "manual"
         type: string
       edition:
-        description: "Android edition (ARM64 requires the registered KVM runner)"
+        description: "Android edition (ARM64 requires a self-hosted runner with KVM)"
         required: true
         default: "android11"
         type: choice
         options: ["android11", "android15", "android15-arm64"]
+      preflight_only:
+        description: "Only verify an ARM64 runner's architecture, KVM, memory, and CPU"
+        required: false
+        default: false
+        type: boolean
       session_minutes:
         description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
         required: true
@@ -60,7 +65,7 @@ permissions:
 jobs:
   cloud-phone:
     name: Cloud Phone
-    runs-on: ${{ inputs.edition == 'android15-arm64' && fromJSON('["self-hosted", "linux", "ARM64", "kvm"]') || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.edition == 'android15-arm64' && fromJSON('["self-hosted", "linux", "ARM64"]') || 'ubuntu-latest' }}
     timeout-minutes: 360
 
     steps:
@@ -109,12 +114,14 @@ jobs:
           echo "ARM64 runner resources: ${MEMORY_MB} MB, ${CPU_COUNT} vCPUs, KVM ready"
 
       - name: Cache cloudflared binary
+        if: ${{ !inputs.preflight_only }}
         uses: actions/cache@v4
         with:
           path: ~/cloudflared-bin
           key: cloudflared-bin-v2-${{ runner.arch }}
 
       - name: Install cloudflared (Cloudflare Tunnel)
+        if: ${{ !inputs.preflight_only }}
         run: |
           case "$(uname -m)" in
             x86_64) CLOUDFLARED_ARCH=amd64 ;;
@@ -137,6 +144,7 @@ jobs:
           cloudflared --version
 
       - name: Start screen service (live Url first)
+        if: ${{ !inputs.preflight_only }}
         env:
           PHONE_ID: ${{ inputs.phone_id }}
           PHASE: "1"
@@ -148,6 +156,7 @@ jobs:
           ./scripts/mobile-phone/start.sh
 
       - name: Cache Android runtime (SDK + Cuttlefish image)
+        if: ${{ !inputs.preflight_only }}
         uses: actions/cache@v4
         with:
           path: |
@@ -163,6 +172,7 @@ jobs:
           key: cloud-phone-runtime-v9-${{ inputs.edition }}
 
       - name: Start Cloud Phone
+        if: ${{ !inputs.preflight_only }}
         id: start_phone
         env:
           PHONE_ID: ${{ inputs.phone_id }}
@@ -180,7 +190,7 @@ jobs:
           ./scripts/mobile-phone/start.sh
 
       - name: Report safe Android startup diagnostics
-        if: ${{ failure() && steps.start_phone.outcome == 'failure' }}
+        if: ${{ !inputs.preflight_only && failure() && steps.start_phone.outcome == 'failure' }}
         env:
           PHONE_WORKDIR: ${{ github.workspace }}/.phone-vm
         run: |
@@ -210,7 +220,7 @@ jobs:
           PY
 
       - name: Save Android runtime to cache (including after a startup failure)
-        if: always() && steps.start_phone.outputs.runtime_cache_ready == 'true'
+        if: ${{ always() && !inputs.preflight_only && steps.start_phone.outputs.runtime_cache_ready == 'true' }}
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -227,6 +237,7 @@ jobs:
           key: cloud-phone-runtime-v9-${{ inputs.edition }}
 
       - name: Keep phone alive (until session ends or run is cancelled)
+        if: ${{ !inputs.preflight_only }}
         env:
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           PHONE_ID: ${{ inputs.phone_id }}
@@ -273,7 +284,7 @@ jobs:
           echo "Session over."
 
       - name: Stop Cloud Phone processes on the runner
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         env:
           PHONE_WORKDIR: ${{ github.workspace }}/.phone-vm
           PHONE_ID: ${{ inputs.phone_id }}
