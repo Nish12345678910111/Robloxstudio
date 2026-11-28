@@ -1,9 +1,9 @@
 name: Cloud Phone
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
-# Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 uses the
-# ubuntu-24.04-arm hosted runner; the job checks KVM and starts native Cuttlefish.
-# This avoids queueing forever on an unregistered self-hosted runner.
+# Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 routes to a
+# self-hosted Linux ARM64 runner labeled self-hosted, linux, ARM64, kvm; the job
+# checks KVM and starts the native ARM64 Cuttlefish guest.
 # The phone's URL/password are stored only in the owner's account database row
 # (via AIVEN_DATABASE_URL); they are never printed, uploaded, or committed.
 #
@@ -21,7 +21,7 @@ on:
         default: "manual"
         type: string
       edition:
-        description: "Android edition (ARM64 uses Ubuntu 24.04 ARM with KVM)"
+        description: "Android edition (ARM64 requires the registered KVM runner)"
         required: true
         default: "android11"
         type: choice
@@ -60,7 +60,7 @@ permissions:
 jobs:
   cloud-phone:
     name: Cloud Phone
-    runs-on: ${{ inputs.edition == 'android15-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.edition == 'android15-arm64' && fromJSON('["self-hosted", "linux", "ARM64", "kvm"]') || 'ubuntu-latest' }}
     timeout-minutes: 360
 
     steps:
