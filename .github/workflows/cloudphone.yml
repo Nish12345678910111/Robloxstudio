@@ -1,0 +1,460 @@
+name: Cloud Phone
+
+# CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
+# Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 runs on a
+# self-hosted Linux ARM64 runner; the job checks real KVM access before starting
+# the native guest, so it does not need a separately configured `kvm` label.
+# The phone's URL/password are stored only in the owner's account database row
+# (via AIVEN_DATABASE_URL); they are never printed, uploaded, or committed.
+#
+# A job can run at most 360 minutes (~6h). Nothing can run "forever" -
+# when a run ends, just start a new phone.
+
+run-name: "Cloud Phone ${{ inputs.phone_id }}"
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      database_cleaning_only:
+        description: "Run only the database cleaner"
+        required: false
+        default: false
+        type: boolean
+      phone_id:
+        description: "Phone ID (set automatically by the dashboard)"
+        required: false
+        default: "manual"
+        type: string
+      edition:
+        description: "Android edition (ARM64 requires a self-hosted runner with KVM)"
+        required: true
+        default: "android11"
+        type: choice
+        options: ["android11", "android15", "android15-arm64"]
+      preflight_only:
+        description: "Only verify an ARM64 runner's architecture, KVM, memory, and CPU"
+        required: false
+        default: false
+        type: boolean
+      session_minutes:
+        description: "Keep-alive minutes (max 355; GitHub kills jobs at ~360)"
+        required: true
+        default: "340"
+        type: choice
+        options: ["30", "60", "120", "240", "300", "340", "355"]
+      ram_mb:
+        description: "Phone RAM (MB) - runner has 16 GB total"
+        required: true
+        default: "12288"
+        type: choice
+        options: ["4096", "8192", "12288"]
+      cpu_cores:
+        description: "Phone CPU cores - runner has 4 vCPUs"
+        required: true
+        default: "4"
+        type: choice
+        options: ["2", "4"]
+      disk_gb:
+        description: "Phone storage (GB)"
+        required: true
+        default: "32"
+        type: choice
+        options: ["16", "32"]
+
+permissions:
+  contents: read
+  actions: write
+
+# NOTE: no concurrency group on purpose - every dispatch gets its own
+# runner, so you can create MULTIPLE cloud phones at the same time.
+
+jobs:
+  cloud-phone:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.database_cleaning_only != true }}
+    name: Cloud Phone
+    runs-on: ${{ inputs.edition == 'android15-arm64' && fromJSON('["self-hosted", "linux", "ARM64"]') || 'ubuntu-latest' }}
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare Android hardware acceleration
+        env:
+          EDITION: ${{ inputs.edition }}
+        run: |
+          HOST_ARCH="$(uname -m)"
+          sudo modprobe kvm || true
+          if [ "$HOST_ARCH" = "x86_64" ]; then
+            if grep -q GenuineIntel /proc/cpuinfo; then sudo modprobe kvm_intel || true; fi
+            if grep -q AuthenticAMD /proc/cpuinfo; then sudo modprobe kvm_amd || true; fi
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          sudo udevadm settle --timeout=10 || true
+          if [ -c /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
+          echo "Host architecture: $HOST_ARCH"
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "KVM acceleration: available"
+          elif [ "$EDITION" = "android15-arm64" ]; then
+            echo "Android 15 ARM64 requires KVM; refusing a software-emulated start." >&2
+            exit 2
+          else
+            echo "KVM acceleration: unavailable; the Android Emulator will try its software fallback."
+          fi
+          if [ -e /dev/kvm ]; then ls -l /dev/kvm; else echo "KVM device: missing"; fi
+          nproc; free -h
+
+      - name: Verify ARM64 KVM runner
+        if: ${{ inputs.edition == 'android15-arm64' }}
+        run: |
+          case "$(uname -m)" in
+            aarch64|arm64) ;;
+            *) echo "ARM64 Android requires an ARM64 runner; found $(uname -m)." >&2; exit 2 ;;
+          esac
+          [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ] || { echo "ARM64 Android requires readable and writable /dev/kvm." >&2; exit 2; }
+          MEMORY_MB="$(awk '/^MemTotal:/ { print int($2 / 1024) }' /proc/meminfo)"
+          CPU_COUNT="$(nproc)"
+          [ "$MEMORY_MB" -ge 15000 ] || { echo "ARM64 Android requires at least 16 GB RAM; runner reports ${MEMORY_MB} MB." >&2; exit 2; }
+          [ "$CPU_COUNT" -ge 4 ] || { echo "ARM64 Android requires at least 4 vCPUs; runner reports ${CPU_COUNT}." >&2; exit 2; }
+          echo "ARM64 runner resources: ${MEMORY_MB} MB, ${CPU_COUNT} vCPUs, KVM ready"
+
+      - name: Cache cloudflared binary
+        if: ${{ !inputs.preflight_only }}
+        uses: actions/cache@v4
+        with:
+          path: ~/cloudflared-bin
+          key: cloudflared-bin-v2-${{ runner.arch }}
+
+      - name: Install cloudflared (Cloudflare Tunnel)
+        if: ${{ !inputs.preflight_only }}
+        run: |
+          case "$(uname -m)" in
+            x86_64) CLOUDFLARED_ARCH=amd64 ;;
+            aarch64|arm64) CLOUDFLARED_ARCH=arm64 ;;
+            *) echo "Unsupported Cloud Phone host architecture: $(uname -m)" >&2; exit 2 ;;
+          esac
+          if [ -x ~/cloudflared-bin/cloudflared ]; then
+            cp ~/cloudflared-bin/cloudflared /tmp/cloudflared
+          else
+            for i in 1 2 3 4 5; do
+              curl -fL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/cloudflared \
+                "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CLOUDFLARED_ARCH}" && break
+              echo "cloudflared download attempt $i failed, retrying..."; sleep 10
+            done
+            mkdir -p ~/cloudflared-bin && cp /tmp/cloudflared ~/cloudflared-bin/cloudflared || true
+          fi
+          test -s /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
+          cloudflared --version
+
+      - name: Start screen service (live Url first)
+        if: ${{ !inputs.preflight_only }}
+        env:
+          PHONE_ID: ${{ inputs.phone_id }}
+          PHASE: "1"
+          EDITION: ${{ inputs.edition }}
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
+        run: |
+          chmod +x scripts/mobile-phone/start.sh
+          ./scripts/mobile-phone/start.sh
+
+      - name: Cache Android runtime (SDK + Cuttlefish image)
+        if: ${{ !inputs.preflight_only }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/system-images
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/cmdline-tools
+            .phone-vm/sdk/emulator
+            .phone-vm/sdk/system-images
+            .phone-vm/sdk/platform-tools
+            .phone-vm/sdk/cmdline-tools
+            .phone-vm/cuttlefish
+          key: cloud-phone-runtime-v9-${{ inputs.edition }}
+
+      - name: Start Cloud Phone
+        if: ${{ !inputs.preflight_only }}
+        id: start_phone
+        env:
+          PHONE_ID: ${{ inputs.phone_id }}
+          PHASE: "2"
+          START_ONLY: "1"
+          RAM_MB: ${{ inputs.ram_mb }}
+          CPU_CORES: ${{ inputs.cpu_cores }}
+          DISK_GB: ${{ inputs.disk_gb }}
+          SESSION_MINUTES: ${{ inputs.session_minutes }}
+          EDITION: ${{ inputs.edition }}
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
+        run: |
+          chmod +x scripts/mobile-phone/start.sh
+          ./scripts/mobile-phone/start.sh
+
+      - name: Report safe Android startup diagnostics
+        if: ${{ !inputs.preflight_only && failure() && steps.start_phone.outcome == 'failure' }}
+        env:
+          PHONE_WORKDIR: ${{ github.workspace }}/.phone-vm
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["PHONE_WORKDIR"])
+          names = ("cuttlefish.log", "sdkmanager.log", "kvm-check.log", "emulator.log", "setup-skip.log", "scrcpy.log")
+          interesting = ("error", "failed", "not found", "unsupported", "warning", "unable", "could not", "did not", "timed out", "timeout", "fatal", "exception", "boot", "image", "accel", "kvm", "qemu", "emulator", "scrcpy", "cuttlefish", "cvd", "fetch")
+          sensitive = ("password", "token", "secret", "aiven_database_url", "trycloudflare.com", "http://", "https://")
+          found = False
+          for name in names:
+              path = root / name
+              if not path.is_file():
+                  continue
+              lines = path.read_text(errors="replace").splitlines()
+              selected = [line for line in lines[-150:] if any(word in line.lower() for word in interesting)]
+              for line in selected[-20:]:
+                  if any(word in line.lower() for word in sensitive):
+                      continue
+                  safe = line[:500].replace("%", "%25").replace(":", "%3A").replace(",", "%2C")
+                  print(f"::error title=Cloud Phone startup ({name})::{safe}")
+                  found = True
+          if not found:
+              print("::error title=Cloud Phone startup::No safe Android runtime diagnostics were written.")
+          PY
+
+      - name: Save Android runtime to cache (including after a startup failure)
+        if: ${{ always() && !inputs.preflight_only && steps.start_phone.outputs.runtime_cache_ready == 'true' }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/system-images
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/cmdline-tools
+            .phone-vm/sdk/emulator
+            .phone-vm/sdk/system-images
+            .phone-vm/sdk/platform-tools
+            .phone-vm/sdk/cmdline-tools
+            .phone-vm/cuttlefish
+          key: cloud-phone-runtime-v9-${{ inputs.edition }}
+
+      - name: Keep phone alive (until session ends or run is cancelled)
+        if: ${{ !inputs.preflight_only }}
+        env:
+          SESSION_MINUTES: ${{ inputs.session_minutes }}
+          PHONE_ID: ${{ inputs.phone_id }}
+          EDITION: ${{ inputs.edition }}
+        run: |
+          CVD_GROUP=""
+          if [ "$EDITION" = "android15-arm64" ]; then
+            RUN_IDENTITY="${GITHUB_RUN_ID:-${PHONE_ID:-manual}}"
+            CVD_GROUP="nishcloudphone-$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
+          fi
+          echo "Cloud phone created."
+          echo "Keeping it alive for ${SESSION_MINUTES} minutes."
+          DEADLINE=$(( $(date +%s) + SESSION_MINUTES * 60 ))
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            # Deletion queue: ask the website (signed, per-phone secret)
+            # whether this phone was deleted/stopped by its owner.
+            if [ -f .phone-vm/.pw ]; then
+              PT="$(printf %s "$(cat .phone-vm/.pw)" | sha256sum | cut -d' ' -f1)"
+              if curl -fs --max-time 10 -H "x-phone-token: $PT" "https://nishproductions.pages.dev/api/phone-directive?id=${PHONE_ID}" 2>/dev/null | grep -q '"action":"stop"'; then
+                echo "Owner deleted this phone - shutting down."
+                exit 0
+              fi
+            fi
+            if [ ! -f .phone-vm/scrcpy.pid ] || ! kill -0 "$(cat .phone-vm/scrcpy.pid)" 2>/dev/null; then
+              echo "phone screen mirror stopped"; exit 1
+            fi
+            if [ "$EDITION" = "android15-arm64" ]; then
+              if ! cvd --group_name="$CVD_GROUP" status >/dev/null 2>&1; then
+                DEAD=$(( ${DEAD:-0} + 1 ))
+                if [ "$DEAD" -ge 3 ]; then echo "Cuttlefish phone stopped"; exit 1; fi
+              else
+                DEAD=0
+              fi
+            elif [ -f .phone-vm/emulator.pid ] && ! kill -0 "$(cat .phone-vm/emulator.pid)" 2>/dev/null; then
+              DEAD=$(( ${DEAD:-0} + 1 ))
+              # 3 consecutive dead checks (~45s) before declaring it gone -
+              # a slow-starting phone must never be reported as an error.
+              if [ "$DEAD" -ge 3 ]; then echo "phone stopped"; exit 1; fi
+            else
+              DEAD=0
+            fi
+            sleep 15
+          done
+          echo "Session over."
+
+      - name: Stop Cloud Phone processes on the runner
+        if: ${{ always() && !inputs.preflight_only }}
+        env:
+          PHONE_WORKDIR: ${{ github.workspace }}/.phone-vm
+          PHONE_ID: ${{ inputs.phone_id }}
+          EDITION: ${{ inputs.edition }}
+        run: |
+          RUN_IDENTITY="${GITHUB_RUN_ID:-${PHONE_ID:-manual}}"
+          CVD_GROUP="nishcloudphone-$(printf %s "$RUN_IDENTITY" | sha256sum | cut -c1-12)"
+          if [ "$EDITION" = "android15-arm64" ] && command -v cvd >/dev/null 2>&1; then
+            cvd --group_name="$CVD_GROUP" stop --clear_instance_dirs >/dev/null 2>&1 || true
+          fi
+          if [ "$EDITION" = "android15-arm64" ] && [ -x "$PHONE_WORKDIR/cuttlefish/host/usr/bin/adb" ]; then
+            "$PHONE_WORKDIR/cuttlefish/host/usr/bin/adb" kill-server >/dev/null 2>&1 || true
+          fi
+          stop_pidfile() {
+            local file="$1" expected="$2" pid command
+            [ -s "$PHONE_WORKDIR/$file" ] || return 0
+            pid="$(cat "$PHONE_WORKDIR/$file" 2>/dev/null || true)"
+            case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+            command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+            case "$command" in *"$expected"*) kill "$pid" 2>/dev/null || true ;; esac
+          }
+          # Stop the supervisor first so it cannot restart the viewer or tunnel.
+          stop_pidfile supervisor.pid start.sh
+          stop_pidfile setup-skip.pid start.sh
+          stop_pidfile cvd.pid "cvd --group_name=$CVD_GROUP"
+          stop_pidfile emulator.pid "emulator -avd phone"
+          stop_pidfile scrcpy.pid scrcpy
+          stop_pidfile cloudflared-viewer.pid "cloudflared tunnel"
+          stop_pidfile cloudflared-novnc.pid "cloudflared tunnel"
+          stop_pidfile viewer.pid viewer.py
+          stop_pidfile websockify.pid websockify
+          stop_pidfile vnc.pid x11vnc
+          stop_pidfile xvfb.pid "Xvfb :99"
+
+
+  database-cleaning:
+    name: Database Cleaning
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.database_cleaning_only == true) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install PostgreSQL client dependency
+        run: npm install --no-save --ignore-scripts --package-lock=false pg@^8.23.1
+
+      - name: Clean old Cloud Phone database records and completed workflow runs
+        env:
+          AIVEN_DATABASE_URL: ${{ secrets.AIVEN_DATABASE_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { ensureSchema, listPhoneRows, deletePhoneRow } from "./functions/_lib/db.js";
+          import { findRunsByPhoneIds, getRunStatus, deleteRun } from "./functions/_lib/github.js";
+
+          const baseEnv = {
+            AIVEN_DATABASE_URL: process.env.AIVEN_DATABASE_URL,
+            GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+            GITHUB_OWNER: process.env.GITHUB_OWNER,
+            GITHUB_REPO: process.env.GITHUB_REPO
+          };
+          if (!baseEnv.AIVEN_DATABASE_URL || !baseEnv.GITHUB_TOKEN) {
+            throw new Error("Database cleaning requires AIVEN_DATABASE_URL and GITHUB_TOKEN.");
+          }
+
+          const workflowNames = ["cloud-phone.yml", "cloudphone.yml"];
+          const workflowEnvs = workflowNames.map(name => ({ ...baseEnv, GITHUB_WORKFLOW: name }));
+          await ensureSchema(baseEnv);
+          const rows = await listPhoneRows({ role: "admin" }, baseEnv);
+          const oldRows = rows.filter(row =>
+            Date.now() - new Date(row.created_at).getTime() >= 24 * 60 * 60 * 1000
+          ).slice(0, 5);
+
+          if (!oldRows.length) {
+            console.log("Database cleaning: no phone records are at least 24 hours old.");
+            process.exit(0);
+          }
+
+          const phoneIds = oldRows.map(row => String(row.phone_id));
+          const runsByPhone = new Map(phoneIds.map(id => [id, new Map()]));
+
+          // Require a complete history scan for BOTH workflow filenames before
+          // treating a missing run as an orphan. Any failed scan aborts cleanup.
+          for (const env of workflowEnvs) {
+            const found = await findRunsByPhoneIds(phoneIds, env);
+            for (const [phoneId, runIds] of found) {
+              for (const runId of runIds) runsByPhone.get(String(phoneId)).set(String(runId), env);
+            }
+          }
+
+          let checked = 0;
+          let deletedRows = 0;
+          let deletedRuns = 0;
+          for (const row of oldRows) {
+            if (checked >= 5) break;
+            const phoneId = String(row.phone_id);
+            const runMap = runsByPhone.get(phoneId);
+            if (row.run_id) {
+              // A stored run ID may belong to either workflow. Add it only
+              // after the full scans above have succeeded.
+              if (!runMap.has(String(row.run_id))) runMap.set(String(row.run_id), null);
+            }
+            if (runMap.size === 0) {
+              await deletePhoneRow(phoneId, baseEnv);
+              deletedRows++;
+              console.log("Removed an orphaned phone database row:", phoneId);
+              continue;
+            }
+
+            checked++;
+            let allGone = true;
+            for (const [runId, knownEnv] of runMap) {
+              let status = "unknown";
+              let usedEnv = knownEnv;
+              if (knownEnv) {
+                status = await getRunStatus(runId, knownEnv).catch(() => "unknown");
+              } else {
+                // A legacy stored run ID can be from either workflow. A 404
+                // is trusted only when the helper can verify workflow access.
+                for (const env of workflowEnvs) {
+                  const candidate = await getRunStatus(runId, env).catch(() => "unknown");
+                  if (candidate !== "unknown") {
+                    status = candidate;
+                    usedEnv = env;
+                    break;
+                  }
+                }
+              }
+
+              if (status === null) continue;
+              if (status !== "completed" || !usedEnv) {
+                allGone = false;
+                break;
+              }
+              await deleteRun(runId, usedEnv).catch(() => null);
+              const afterDelete = await getRunStatus(runId, usedEnv).catch(() => "unknown");
+              if (afterDelete !== null) {
+                allGone = false;
+                break;
+              }
+              deletedRuns++;
+            }
+
+            if (!allGone) continue;
+            await deletePhoneRow(phoneId, baseEnv);
+            deletedRows++;
+            console.log("Removed cleaned phone database row:", phoneId);
+          }
+
+          console.log(JSON.stringify({
+            scannedOldRows: oldRows.length,
+            checkedRows: checked,
+            deletedWorkflowRuns: deletedRuns,
+            deletedDatabaseRows: deletedRows
+          }));
+          NODE
