@@ -6,6 +6,7 @@ const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
 const home = read("../cloudflare-pages/src/shared/PublicHome.jsx");
 const homeStyles = read("../cloudflare-pages/src/shared/globals.css");
 const homeMetadata = read("../app/home/page.js");
+const readmeLead = read("../README.md").split("\n").slice(0, 3).join("\n");
 const cloudflareRoutes = read("../cloudflare-pages/src/main.jsx");
 const cloudflareRedirects = read("../cloudflare-pages/public/_redirects");
 const rootPage = read("../app/page.js");
@@ -22,36 +23,32 @@ const vercelTerms = read("../app/terms/page.js");
 const vercelPrivacy = read("../app/privacy/page.js");
 const pageSources = [home, cloudflareRoutes, login, dashboard, phoneRoute, legalPage, vercelTerms, vercelPrivacy].join("\n");
 
-test("public home focuses on Nish Cloud Phone with one Cloudflare Pages deployment", () => {
+test("public home is a deployments directory with direct Cloud Phone access and no platform links", () => {
   assert.match(home, /id="np-hero-title"/);
-  assert.match(home, /Cloud Android\.<br \/>Right in your<br \/><em>browser\.<\/em>/);
+  assert.match(home, /Your deployments\.<br \/><em>One click away\.<\/em>/);
   assert.match(home, /className="np-header-cta" href="\/cloudphone"/);
+  assert.match(home, /href="#deployments">View my deployments/);
   assert.match(home, /href="\/cloudphone">Open Cloud Phone/);
-  assert.match(home, /href="#deployments">View its deployment/);
   assert.match(home, /const FEATURED_PROJECTS = \[/);
   assert.equal((home.match(/name: "Nish Cloud Phone"/g) || []).length, 1);
   assert.equal((home.match(/featured: true/g) || []).length, 1);
   assert.match(home, /id="deployments"/);
-  assert.match(home, /NISH CLOUD PHONE DEPLOYMENT/);
-  assert.match(home, /href: "https:\/\/nishproductions\.pages\.dev\/cloudphone"/);
-  assert.match(home, /provider: "Cloudflare Pages"/);
-  assert.match(home, /Featured project/);
-  assert.match(home, /Hosting platform/);
-  assert.doesNotMatch(home, /Vercel|Modern Chat|Nishgamerr Lua Scripts|GitHub Pages|github\.io|vercel\.app/i);
-  assert.doesNotMatch(homeStyles, /Vercel|GitHub Pages|vercel|github/i);
-  assert.match(home, /ALL_DEPLOYMENTS = FEATURED_PROJECTS\.flatMap/);
-  assert.match(home, /\{FEATURED_PROJECTS\.length\} featured project/);
-  assert.match(home, /\{ALL_DEPLOYMENTS\.length\} Cloudflare Pages deployment/);
+  assert.match(home, /DEPLOYMENT DIRECTORY/);
+  assert.match(home, /<CloudPhonePreview \/>/);
   assert.match(home, /map\(\(project, index\) => <ProjectCard key=\{project\.name\} project=\{project\} index=\{index\} \/>\)/);
-  assert.match(home, /href="\/cloudphone\/signup"/);
+  assert.doesNotMatch(home, /GitHub|github|Cloudflare|cloudflare|pages\.dev|Vercel|vercel\.app|https?:\/\//i);
+  assert.doesNotMatch(homeStyles, /GitHub|github|Cloudflare|cloudflare|Vercel|vercel/i);
   assert.match(cloudflareShell, /Nish Cloud Phone — Android in your browser \| Nish Productions/);
   assert.match(homeMetadata, /Nish Cloud Phone — Android in your browser \| Nish Productions/);
-  assert.match(homeMetadata, /Cloudflare Pages/);
-  assert.doesNotMatch(homeMetadata, /Modern Chat|Lua scripts|Vercel|GitHub Pages/);
+  assert.match(homeMetadata, /description: "Launch and manage a private cloud Android session from your browser with Nish Cloud Phone\."/);
+  assert.doesNotMatch(homeMetadata, /on Cloudflare Pages|GitHub|Vercel|pages\.dev/i);
+  assert.doesNotMatch(cloudflareShell, /GitHub|Cloudflare|Vercel|pages\.dev/i);
+  assert.doesNotMatch(readmeLead, /GitHub|Cloudflare|Vercel|pages\.dev/i);
+  assert.doesNotMatch(legalPage, /GitHub|Cloudflare|Vercel|pages\.dev/i);
 });
 
 test("deployment showcase animates, adapts to mobile, and respects reduced motion", () => {
-  assert.match(home, /<DeploymentPreview \/>/);
+  assert.match(home, /<CloudPhonePreview \/>/);
   assert.match(home, /className="np-deploy-preview" aria-hidden="true"/);
   assert.match(homeStyles, /\.np-deploy-window \{[^}]*animation: np-panel-float 8s ease-in-out infinite/);
   assert.match(homeStyles, /animation: np-ring-orbit 42s linear infinite/);
@@ -59,9 +56,11 @@ test("deployment showcase animates, adapts to mobile, and respects reduced motio
   assert.match(homeStyles, /@media \(max-width: 620px\)/);
   assert.match(homeStyles, /\.np-project-grid \{ display: grid; grid-template-columns: minmax\(0, 560px\); justify-content: center;/);
   assert.match(homeStyles, /\.np-project-grid \{ grid-template-columns: 1fr; gap: 11px;/);
+  assert.match(homeStyles, /@media \(max-width: 620px\) \{\s+\.np-home-grid,\.np-deploy-halo,\.np-deploy-preview::before,\.np-deploy-preview::after,\.np-deploy-window,\.np-deploy-state i \{ animation: none; \}/);
   assert.match(homeStyles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(homeStyles, /\.np-home \*, \.np-home \*::before, \.np-home \*::after/);
-  assert.match(homeStyles, /\.np-deploy-window,\.np-deploy-preview::before,\.np-deploy-preview::after \{ animation: none !important; \}/);
+  assert.match(homeStyles, /\.np-home-grid,\.np-deploy-halo,\.np-deploy-window,\.np-deploy-preview::before,\.np-deploy-preview::after,\.np-deploy-row,\.np-deploy-row:nth-child\(n\),\.np-deploy-state i \{ animation: none !important; \}/);
+  assert.doesNotMatch(homeStyles, /will-change\s*:/);
 });
 
 test("site menu opens and closes accessibly with policy links", () => {

@@ -7,7 +7,7 @@ import { reconcilePhoneRuns } from "../_lib/phone-ownership.js";
 
 const BUSY = "Many users are using free cloud phones, try again later.";
 const MAX_FREE = 5;
-const PHONE_EDITIONS = new Set(["android11", "android15"]);
+const PHONE_EDITIONS = new Set(["android11", "android15", "android15-arm64"]);
 const lastCreate = new Map();
 const storedStatus = status => status === "running" ? "in_progress"
   : ["stopped", "deleted"].includes(status) ? "completed"
@@ -115,12 +115,7 @@ export async function onRequestPost({ request, env }) {
 
   const requestBody = await request.json().catch(() => ({}));
   const edition = requestBody?.edition ?? "android11";
-  if (!PHONE_EDITIONS.has(edition)) {
-    const error = edition === "android15-arm64"
-      ? "Android 15 ARM64 is paused because hosted ARM64 runners do not provide usable KVM. Choose Android 11 or Android 15 x86_64."
-      : "Unsupported Android edition.";
-    return json({ error }, 400);
-  }
+  if (!PHONE_EDITIONS.has(edition)) return json({ error: "Unsupported Android edition." }, 400);
 
   const now = Date.now();
   if (now - (lastCreate.get(user.id) || 0) < 8000) return json({ error: "Your cloud phone is already starting - give it a few seconds." }, 429);
