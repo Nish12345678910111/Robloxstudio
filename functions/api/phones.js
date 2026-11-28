@@ -114,7 +114,8 @@ export async function onRequestPost({ request, env }) {
   if (!tokenConfigured(env)) return json({ error: BUSY }, 503);
 
   const requestBody = await request.json().catch(() => ({}));
-  const edition = requestBody?.edition ?? "android11";
+  // Every newly created cloud phone is ARM64, including requests from older clients.
+  const edition = "android15-arm64";
   if (!PHONE_EDITIONS.has(edition)) return json({ error: "Unsupported Android edition." }, 400);
 
   const now = Date.now();
