@@ -51,14 +51,17 @@ async function reconcileQuotaRows(rows, env) {
       let allFinished = true;
       for (const [runId, candidates] of found) {
         let resolved = false;
+        let missingFromEveryCandidate = true;
         for (const workflowEnv of candidates) {
           const status = await getRunStatus(runId, workflowEnv).catch(() => "unknown");
           if (status === "unknown") { allFinished = false; resolved = true; break; }
-          if (status !== null && status !== "completed") { allFinished = false; resolved = true; break; }
-          if (status === "completed") { resolved = true; break; }
-          // A verified 404 means this workflow does not own this run; try the
-          // other workflow when the stored run ID has no history match.
+          if (status === null) continue; // Verified 404; try another workflow if needed.
+          missingFromEveryCandidate = false;
+          if (status !== "completed") allFinished = false;
+          resolved = true;
+          break;
         }
+        if (!resolved && missingFromEveryCandidate) resolved = true;
         if (!resolved) allFinished = false;
         if (!allFinished) break;
       }
