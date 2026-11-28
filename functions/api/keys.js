@@ -1,6 +1,6 @@
 import { getUser } from "../_lib/auth.js";
 import { dbHealth } from "../_lib/db.js";
-import { keyHealth } from "../_lib/github.js";
+import { cloudPhoneWorkflowEnv, keyHealth } from "../_lib/github.js";
 import { json } from "../_lib/http.js";
 
 let databaseCache = null;
@@ -14,6 +14,6 @@ export async function onRequestGet({ request, env }) {
     databaseCache = await dbHealth(env).catch(() => ({ ok: false, code: "error" }));
     databaseCacheAt = Date.now();
   }
-  const keys = await keyHealth(env).catch(() => []);
+  const keys = await keyHealth(cloudPhoneWorkflowEnv(env)).catch(() => []);
   return json({ db: databaseCache.ok, dbCode: databaseCache.ok ? null : databaseCache.code, keys });
 }
