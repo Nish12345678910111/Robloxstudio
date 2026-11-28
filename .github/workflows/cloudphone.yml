@@ -1,9 +1,7 @@
 name: Cloud Phone
 
 # CLOUD PHONE - separate workflow. RDP (main.yml) is untouched.
-# Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 runs on a
-# self-hosted Linux ARM64 runner; the job checks real KVM access before starting
-# the native guest, so it does not need a separately configured `kvm` label.
+# Android 11/15 x86_64 use ubuntu-latest. Android 15 ARM64 runs on GitHub-hosted ARM64; Cuttlefish uses its QEMU backend with TCG when KVM is unavailable.
 # The phone's URL/password are stored only in the owner's account database row
 # (via AIVEN_DATABASE_URL); they are never printed, uploaded, or committed.
 #
@@ -28,9 +26,9 @@ on:
         default: "manual"
         type: string
       edition:
-        description: "Android edition (ARM64 requires a self-hosted runner with KVM)"
+        description: "Android edition (ARM64 software emulation; KVM is optional)"
         required: true
-        default: "android11"
+        default: "android15-arm64"
         type: choice
         options: ["android11", "android15", "android15-arm64"]
       preflight_only:
@@ -74,54 +72,30 @@ jobs:
   cloud-phone:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.database_cleaning_only != true }}
     name: Cloud Phone
-    runs-on: ${{ inputs.edition == 'android15-arm64' && fromJSON('["self-hosted", "linux", "ARM64"]') || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.edition == 'android15-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 360
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare Android hardware acceleration
-        env:
-          EDITION: ${{ inputs.edition }}
-        run: |
-          HOST_ARCH="$(uname -m)"
-          sudo modprobe kvm || true
-          if [ "$HOST_ARCH" = "x86_64" ]; then
-            if grep -q GenuineIntel /proc/cpuinfo; then sudo modprobe kvm_intel || true; fi
-            if grep -q AuthenticAMD /proc/cpuinfo; then sudo modprobe kvm_amd || true; fi
-          fi
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
-          sudo udevadm control --reload-rules || true
-          sudo udevadm trigger --name-match=kvm || true
-          sudo udevadm settle --timeout=10 || true
-          if [ -c /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
-          echo "Host architecture: $HOST_ARCH"
-          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-            echo "KVM acceleration: available"
-          elif [ "$EDITION" = "android15-arm64" ]; then
-            echo "Android 15 ARM64 requires KVM; refusing a software-emulated start." >&2
-            exit 2
-          else
-            echo "KVM acceleration: unavailable; the Android Emulator will try its software fallback."
-          fi
-          if [ -e /dev/kvm ]; then ls -l /dev/kvm; else echo "KVM device: missing"; fi
-          nproc; free -h
-
-      - name: Verify ARM64 KVM runner
+      - name: Verify ARM64 software-emulation runner
         if: ${{ inputs.edition == 'android15-arm64' }}
         run: |
           case "$(uname -m)" in
             aarch64|arm64) ;;
             *) echo "ARM64 Android requires an ARM64 runner; found $(uname -m)." >&2; exit 2 ;;
           esac
-          [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ] || { echo "ARM64 Android requires readable and writable /dev/kvm." >&2; exit 2; }
           MEMORY_MB="$(awk '/^MemTotal:/ { print int($2 / 1024) }' /proc/meminfo)"
           CPU_COUNT="$(nproc)"
           [ "$MEMORY_MB" -ge 15000 ] || { echo "ARM64 Android requires at least 16 GB RAM; runner reports ${MEMORY_MB} MB." >&2; exit 2; }
           [ "$CPU_COUNT" -ge 4 ] || { echo "ARM64 Android requires at least 4 vCPUs; runner reports ${CPU_COUNT}." >&2; exit 2; }
-          echo "ARM64 runner resources: ${MEMORY_MB} MB, ${CPU_COUNT} vCPUs, KVM ready"
-
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "KVM acceleration: available (optional)"
+          else
+            echo "KVM unavailable; Cuttlefish will use QEMU TCG software emulation."
+          fi
+          free -h
       - name: Cache cloudflared binary
         if: ${{ !inputs.preflight_only }}
         uses: actions/cache@v4
@@ -178,7 +152,7 @@ jobs:
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
             .phone-vm/cuttlefish
-          key: cloud-phone-runtime-v9-${{ inputs.edition }}
+          key: cloud-phone-runtime-v10-${{ inputs.edition }}
 
       - name: Start Cloud Phone
         if: ${{ !inputs.preflight_only }}
@@ -243,7 +217,7 @@ jobs:
             .phone-vm/sdk/platform-tools
             .phone-vm/sdk/cmdline-tools
             .phone-vm/cuttlefish
-          key: cloud-phone-runtime-v9-${{ inputs.edition }}
+          key: cloud-phone-runtime-v10-${{ inputs.edition }}
 
       - name: Keep phone alive (until session ends or run is cancelled)
         if: ${{ !inputs.preflight_only }}
