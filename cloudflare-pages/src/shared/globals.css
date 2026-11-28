@@ -18,6 +18,8 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
 .side nav{display:flex;flex-direction:column;gap:8px}
 .editionPicker{display:flex;flex-direction:column;gap:7px;color:var(--mut);font-size:12px}
 .editionPicker select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#0a1122;color:var(--txt);font:inherit}
+.safetyNotice{display:flex;flex-direction:column;gap:5px;padding:10px 11px;border:1px solid rgba(249,190,92,.25);border-radius:12px;background:rgba(106,72,19,.16);color:#d4c6a8;font-size:10px;line-height:1.5}
+.safetyNotice b{color:#ffdd9c;font-size:11px}
 .nav{text-align:left;background:transparent;border:1px solid transparent;border-radius:14px;padding:12px 14px}
 .nav.on{background:linear-gradient(135deg,rgba(79,124,255,.25),rgba(139,92,246,.18));border-color:#35549f}
 .primary{background:linear-gradient(135deg,var(--acc),var(--acc2));border:0;font-weight:800;color:#fff;box-shadow:0 8px 26px rgba(90,110,255,.35)}
@@ -67,7 +69,7 @@ code{background:#0a1122;border:1px solid var(--line);padding:2px 8px;border-radi
 .nfIcon{font-size:56px}
 .phonePageBox{position:relative;width:100%;max-width:430px;margin:20px auto;aspect-ratio:9/16;background:#000;border:10px solid #141d38;border-radius:34px;overflow:hidden}
 .phonePageBox iframe{width:100%;height:100%;border:0;display:block}
-@media(max-width:860px){.side{position:fixed;left:0;top:0;height:100dvh;box-shadow:24px 0 70px rgba(0,0,0,.65)}.side.closed{margin-left:-280px}.wrap{padding-top:18px}}
+@media(max-width:860px){.side{position:fixed;left:0;top:0;height:100dvh;overflow-y:auto;box-shadow:24px 0 70px rgba(0,0,0,.65)}.side.closed{margin-left:-280px}.wrap{padding-top:18px}}
 /* --- mobile fixes: direct create button, true one-column layout --- */
 .fab{display:none}
 @media(max-width:860px){
