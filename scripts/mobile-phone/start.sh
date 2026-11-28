@@ -22,7 +22,7 @@ case "$EDITION" in
   *) echo "Unsupported Android edition: $EDITION" >&2; exit 2 ;;
 esac
 echo ">>> Android $ANDROID_VERSION compatibility profile: $EDITION ($ANDROID_ABI)"
-CVD_BUILD="android15-qpr2-s10-release/aosp_cf_arm64_only_phone-userdebug"
+CVD_BUILD="aosp-android-latest-release/aosp_cf_arm64_only_phone-userdebug"
 if [ "$EDITION" = "android15-arm64" ]; then
   PHONE_SYSTEM_IMAGE="Cuttlefish $CVD_BUILD"
 else
