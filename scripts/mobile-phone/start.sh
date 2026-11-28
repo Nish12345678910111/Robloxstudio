@@ -30,6 +30,20 @@ fi
 export PHONE_PROFILE_EDITION="$EDITION" PHONE_PROFILE_API="$ANDROID_API_LEVEL"
 export PHONE_PROFILE_ABI="$ANDROID_ABI" PHONE_PROFILE_HOST_ARCH="$(uname -m)"
 export PHONE_PROFILE_IMAGE="$PHONE_SYSTEM_IMAGE"
+# Validate virtualization before starting the public viewer/tunnel. The workflow
+# also prepares KVM, but this guard keeps direct phase-2 starts from publishing
+# a phone that cannot boot.
+if [ "$EDITION" = "android15-arm64" ] && [ "${PHASE:-2}" != "1" ]; then
+  HOST_ARCH="$(uname -m)"
+  if [ "$HOST_ARCH" != "aarch64" ] && [ "$HOST_ARCH" != "arm64" ]; then
+    echo "The ARM64 Cuttlefish profile requires an ARM64 host; found $HOST_ARCH." >&2
+    exit 1
+  fi
+  if [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+    echo "The ARM64 Cuttlefish profile requires writable /dev/kvm (and read access) on the ARM64 host." >&2
+    exit 1
+  fi
+fi
 WORKDIR_PHONE="${WORKDIR_PHONE:-$PWD/.phone-vm}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$WORKDIR_PHONE"
@@ -203,15 +217,6 @@ if [ "$EDITION" = "android15-arm64" ]; then
   CVD_MODE=1
   CVD_LOG="$WORKDIR_PHONE/cuttlefish.log"
   : > "$CVD_LOG"
-  HOST_ARCH="$(uname -m)"
-  if [ "$HOST_ARCH" != "aarch64" ] && [ "$HOST_ARCH" != "arm64" ]; then
-    echo "The ARM64 Cuttlefish profile requires an ARM64 host; found $HOST_ARCH." >&2
-    exit 1
-  fi
-  if [ ! -w /dev/kvm ]; then
-    echo "The ARM64 Cuttlefish profile requires writable /dev/kvm on the ARM64 host." >&2
-    exit 1
-  fi
   if ! command -v cvd >/dev/null 2>&1; then
     sudo curl -fsSL https://us-apt.pkg.dev/doc/repo-signing-key.gpg \
       -o /etc/apt/trusted.gpg.d/artifact-registry.asc

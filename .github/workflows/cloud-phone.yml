@@ -67,16 +67,29 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Enable hardware acceleration
+        env:
+          EDITION: ${{ inputs.edition }}
         run: |
-          # Give the Android Emulator real hardware acceleration (KVM).
-          # Without a writable /dev/kvm the emulator refuses to start and
-          # the phone screen stays black - this is the standard fix.
+          # The hosted ARM64 image may have KVM compiled as a loadable module.
+          # Load it before triggering udev so /dev/kvm exists before phone setup.
+          sudo modprobe kvm || echo "KVM module could not be loaded; checking for a runner-provided device."
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
           sudo udevadm control --reload-rules || true
           sudo udevadm trigger --name-match=kvm || true
-          sudo chmod 666 /dev/kvm || true
-          if [ -w /dev/kvm ]; then echo "Acceleration: READY"; else echo "Acceleration: software mode"; fi
+          sudo udevadm settle --timeout=10 || true
+          if [ -c /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "Acceleration: READY"
+          else
+            echo "Acceleration: unavailable"
+          fi
           echo "Host architecture: $(uname -m)"
+          if [ -e /dev/kvm ]; then ls -l /dev/kvm; else echo "KVM device: missing"; fi
+          if [ "$EDITION" = "android15-arm64" ] && { [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; }; then
+            echo "::error::Android 15 ARM64 needs a readable and writable /dev/kvm on this ARM64 runner. Enable KVM or use a KVM-capable ARM64 runner." >&2
+            exit 1
+          fi
+          if [ "$EDITION" = "android15-arm64" ]; then echo "ARM64 Cuttlefish KVM preflight: READY"; fi
           nproc; free -h
 
       - name: Cache cloudflared binary
