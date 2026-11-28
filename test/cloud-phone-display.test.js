@@ -31,14 +31,20 @@ test("selected phone RAM, CPU, and disk settings reach both runtime engines", ()
   assert.doesNotMatch(startScript, /-memory 4096 -cores 4/);
 });
 
-test("ARM64 selects a native Cuttlefish build on a KVM-capable runner", () => {
+test("ARM64 selects a native Cuttlefish build on a self-hosted runner with verified KVM", () => {
   assert.match(workflowScript, /default: "android11"[\s\S]*options: \["android11", "android15", "android15-arm64"\]/);
-  assert.match(workflowScript, /inputs\.edition == 'android15-arm64' && fromJSON\('\["self-hosted", "linux", "ARM64", "kvm"\]'\) \|\| 'ubuntu-latest'/);
+  assert.match(workflowScript, /inputs\.edition == 'android15-arm64' && fromJSON\('\["self-hosted", "linux", "ARM64"\]'\) \|\| 'ubuntu-latest'/);
+  assert.doesNotMatch(workflowScript, /runs-on:.*kvm/i);
+  assert.match(workflowScript, /Android 15 ARM64 requires KVM; refusing a software-emulated start/);
   assert.match(workflowScript, /Verify ARM64 KVM runner/);
   assert.match(workflowScript, /\[ -c \/dev\/kvm \]/);
   assert.match(workflowScript, /MEMORY_MB[\s\S]*-ge 15000/);
   assert.match(workflowScript, /CPU_COUNT[\s\S]*-ge 4/);
-  assert.match(workflowScript, /self-hosted.*linux.*ARM64.*kvm/);
+  assert.match(workflowScript, /self-hosted Linux ARM64 runner/);
+  assert.match(workflowScript, /preflight_only:[\s\S]*default: false[\s\S]*type: boolean/);
+  assert.match(workflowScript, /Cache cloudflared binary\n\s+if: \$\{\{ !inputs\.preflight_only \}\}/);
+  assert.match(workflowScript, /Start Cloud Phone\n\s+if: \$\{\{ !inputs\.preflight_only \}\}/);
+  assert.match(workflowScript, /Stop Cloud Phone processes on the runner\n\s+if: \$\{\{ always\(\) && !inputs\.preflight_only \}\}/);
 
   const preflightIndex = workflowScript.indexOf("- name: Verify ARM64 KVM runner");
   const screenServiceIndex = workflowScript.indexOf("- name: Start screen service");
